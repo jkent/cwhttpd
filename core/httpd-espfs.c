@@ -209,7 +209,11 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 {
 	EspFsStat s;
 	int outlen;
-
+	if (!espfs)
+	{
+		ESP_LOGE(TAG, "espfs not registered");
+		return NULL;
+	}
 	if (connData->cgiArg != &httpdCgiEx) {
 		filepath[0] = '\0';
 		if (connData->cgiArg != NULL) {
@@ -229,8 +233,11 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 		url++;
 	}
 
-	size_t basepathLen = strlen(ex->basepath);
-	if (!ex->basepath || basepathLen == 0) {
+	size_t basepathLen = 0;
+	if (ex->basepath) {
+		basepathLen = strlen(ex->basepath);
+	}
+	if (basepathLen == 0) {
 		return strlcpy(filepath, url, len);
 	}
 
