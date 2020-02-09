@@ -216,8 +216,8 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 	}
 	if (connData->cgiArg != &httpdCgiEx) {
 		filepath[0] = '\0';
-		if (connData->cgiArg != NULL) {
-			outlen = strlcpy(filepath, connData->cgiArg, len);
+		if (connData->cgiArg2 != NULL) {
+			outlen = strlcpy(filepath, connData->cgiArg2, len);
 			if (espFsStat(espfs, filepath, &s) == 0 && s.type == ESPFS_TYPE_FILE) {
 				return outlen;
 			}
