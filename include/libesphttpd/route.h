@@ -23,10 +23,10 @@
 #define ROUTE_FILE_EX(path, ex)                    ROUTE_CGI_EX((path), cgiEspFsHook, (HttpdCgiExArg*)(ex))
 
 /** Static file as a template with a replacer function */
-#define ROUTE_TPL(path, replacer)                  ROUTE_CGI_ARG((path), cgiEspFsTemplate, (TplCallback)(replacer))
+#define ROUTE_TPL(path, replacer)                  ROUTE_CGI_ARG2((path), cgiEspFsTemplate, NULL, (TplCallback)(replacer))
 
 /** Static file as a template with a replacer function, taking additional argument connData->cgiArg2 */
-#define ROUTE_TPL_FILE(path, replacer, filepath)   ROUTE_CGI_ARG2((path), cgiEspFsTemplate, (TplCallback)(replacer), (filepath))
+#define ROUTE_TPL_FILE(path, replacer, filepath)   ROUTE_CGI_ARG2((path), cgiEspFsTemplate, (const char*)(filepath), (TplCallback)(replacer))
 
 /** Redirect to some URL */
 #define ROUTE_REDIRECT(path, target)               ROUTE_CGI_ARG((path), cgiRedirect, (const char*)(target))
@@ -38,6 +38,6 @@
 #define ROUTE_WS(path, callback)                   ROUTE_CGI_ARG((path), cgiWebsocket, (WsConnectedCb)(callback))
 
 /** Catch-all filesystem route */
-#define ROUTE_FILESYSTEM()                             ROUTE_CGI("*", cgiEspFsHook)
+#define ROUTE_FILESYSTEM()                         ROUTE_CGI("*", cgiEspFsHook)
 
 #define ROUTE_END() {NULL, NULL, NULL, NULL}

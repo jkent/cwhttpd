@@ -218,8 +218,8 @@ static size_t getFilepath(HttpdConnData *connData, char *filepath, size_t len)
 
 	if (connData->cgiArg != &httpdCgiEx) {
 		filepath[0] = '\0';
-		if (connData->cgiArg2 != NULL) {
-			outlen = strlcpy(filepath, connData->cgiArg2, len);
+		if (connData->cgiArg != NULL) {
+			outlen = strlcpy(filepath, connData->cgiArg, len);
 			if (espFsStat(espfs, filepath, &s) == 0 && s.type == ESPFS_TYPE_FILE) {
 				return outlen;
 			}
@@ -315,7 +315,7 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspFsTemplate(HttpdConnData *connData) {
 
 	if (connData->isConnectionClosed) {
 		//Connection aborted. Clean up.
-		((TplCallback)(connData->cgiArg))(connData, NULL, &tpd->tplArg);
+		((TplCallback)(connData->cgiArg2))(connData, NULL, &tpd->tplArg);
 		espFsClose(tpd->file);
 		free(tpd);
 		return HTTPD_CGI_DONE;
@@ -466,7 +466,7 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspFsTemplate(HttpdConnData *connData) {
 
 						tpd->chunk_resume = false;
 
-						CgiStatus status = ((TplCallback)(connData->cgiArg))(connData, tpd->token, &tpd->tplArg);
+						CgiStatus status = ((TplCallback)(connData->cgiArg2))(connData, tpd->token, &tpd->tplArg);
 						if (status == HTTPD_CGI_MORE) {
 //							espfs_dbg("Multi-part tpl subst, saving parser state");
 							// wants to send more in this token's place.....
@@ -521,7 +521,7 @@ CgiStatus ICACHE_FLASH_ATTR cgiEspFsTemplate(HttpdConnData *connData) {
 	if (sp!=0) httpdSend(connData, e, sp);
 	if (len!=FILE_CHUNK_LEN) {
 		//We're done.
-		((TplCallback)(connData->cgiArg))(connData, NULL, &tpd->tplArg);
+		((TplCallback)(connData->cgiArg2))(connData, NULL, &tpd->tplArg);
 		ESP_LOGD(TAG, "Template sent");
 		espFsClose(tpd->file);
 		free(tpd);
