@@ -111,17 +111,23 @@ the example projects for an implementation that uses this function call.  [FreeR
 This CGI is used to set up a websocket. Websockets are described later in this document.  See
 the example projects for an implementation that uses this function call.  [FreeRTOS Example](https://github.com/chmorgan/esphttpd-freertos)
 
-* __cgiEspFsHook__ (arg: none)
+* __cgiEspFsHook__ (arg1: basepath or &httpdCgiEx magic, arg2:HttpdCgiExArg struct if arg1 was &httpdCgiEx)
 Serves files from the espfs filesystem. The espFsInit function should be called first, with as argument
 a pointer to the start of the espfs binary data in flash. The binary data can be both flashed separately
 to a free bit of SPI flash, as well as linked in with the binary. The nonos example project can be
 configured to do either.
 
+  If arg1 is supplied &httpdCgiEx Magic value, then arg2 is assumed to be of type HttpdCgiExArg, which is a stuct containing extended options.  This should allow for future addition of custom parameters without breaking existing cgi functions that make use of existing members of this struct.
+  Currently available options are: 
+   - basepath: base directory path on filesystem  (Optional, uses URL if NULL)
+   - headerCb: pointer to function which supplies custom headers.  (Optional, sends default headers if NULL)
+   - mimetype: customize the MIMETYPE  (Optional, sends default MIMETYPE if NULL)
+
 * __cgiEspFsTemplate__ (arg: template function)
 The espfs code comes with a small but efficient template routine, which can fill a template file stored on
 the espfs filesystem with user-defined data.
 
-* __cgiEspVfsGet__ (arg: base filesystem path)
+* __cgiEspVfsGet__ (arg1: basepath or &httpdCgiEx magic, arg2:HttpdCgiExArg struct if arg1 was &httpdCgiEx)
 This is a catch-all cgi function. It takes the url passed to it, looks up the corresponding path in the filesystem and if it exists, sends the file. This simulates what a normal webserver would do with static files.  If the file is not found, (or if http method is not GET) this cgi function returns NOT_FOUND, and then other cgi functions specified later in the routing table can try.  See the example projects for an implementation that uses this function call.  [FreeRTOS Example](https://github.com/chmorgan/esphttpd-freertos)
 
   The cgiArg value is the base directory path, if specified.
@@ -129,6 +135,8 @@ This is a catch-all cgi function. It takes the url passed to it, looks up the co
     * ROUTE_CGI("*", cgiEspVfsGet)
     * ROUTE_CGI_ARG("*", cgiEspVfsGet, "/base/directory/")
     * ROUTE_CGI_ARG("*", cgiEspVfsGet, ".") to use the current working directory
+
+  Alternatively, if cgiArg is &httpdCgiEx Magic value, see section about HttpdCgiExArg in item __cgiEspFsHook__ above.
     
 * __cgiEspVfsUpload__ (arg: base filesystem path)
 This is a POST and PUT handler for uploading files to the VFS filesystem.  See the example projects for an implementation that uses this function call.  [FreeRTOS Example](https://github.com/chmorgan/esphttpd-freertos)
