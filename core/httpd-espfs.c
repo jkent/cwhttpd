@@ -26,6 +26,12 @@ const static char* TAG = "httpdespfs";
 // If the client does not advertise that he accepts GZIP send following warning message (telnet users for e.g.)
 static const char *gzipNonSupportedMessage = "HTTP/1.0 501 Not implemented\r\nServer: esp8266-httpd/"HTTPDVER"\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 52\r\n\r\nYour browser does not accept gzip-compressed data.\r\n";
 
+static EspFs *espfs = NULL;
+
+void httpdRegisterEspfs(EspFs *fs) {
+	espfs = fs;
+}
+
 /**
  * Try to open a file
  * @param path - path to the file, may end with slash
@@ -64,7 +70,7 @@ static EspFsFile *tryOpenIndex_do(const char *path, const char *indexname) {
 		strcat(fname, indexname);
 
 		// Try to open, returns NULL if failed
-		retval = espFsOpen(fname);
+		retval = espFsOpen(espfs, fname);
 	}
 
 	return retval;
@@ -119,7 +125,7 @@ serveStaticFile(HttpdConnData *connData, const char* filepath) {
 		}
 
 		//First call to this cgi. Open the file so we can read it.
-		file = espFsOpen(filepath);
+		file = espFsOpen(espfs, filepath);
 		if (file == NULL) {
 			// file not found
 

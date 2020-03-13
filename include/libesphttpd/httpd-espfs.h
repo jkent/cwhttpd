@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 #ifdef CONFIG_ESPHTTPD_USE_ESPFS
+#include "espfs.h"
 #include "httpd.h"
 /**
  * The template substitution callback.
@@ -19,6 +20,7 @@ extern "C" {
  */
 typedef CgiStatus (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
+void httpdRegisterEspfs(EspFs *fs);
 CgiStatus cgiEspFsHook(HttpdConnData *connData);
 CgiStatus ICACHE_FLASH_ATTR cgiEspFsTemplate(HttpdConnData *connData);
 
