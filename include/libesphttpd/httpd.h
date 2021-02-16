@@ -1,242 +1,541 @@
-#ifndef HTTPD_H
-#define HTTPD_H
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "esp.h"
+#include "httpd_priv.h"
+
+#include <limits.h>
+#include <netinet/in.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+# include <lwip/sockets.h>
+#endif
+
 
 /**
  * Design notes:
  *  - The platform code owns the memory management of connections
- *  - The platform embeds a HttpdConnData into its own structure, this enables
- *    the platform code, through the use of the container_of approach, to
- *    find its connection structure when given a HttpdConnData*
+ *  - The platform embeds ehttpd_conn_t at the top of its own structure,
+ *    allowing ehttpd_conn_t* to be cast to the platform structure.
  */
 
+#define EHTTPD_VERSION "1.0.0"
 
-#define HTTPDVER "0.5"
-
-//Max length of request head. This is statically allocated for each connection.
-#ifndef HTTPD_MAX_HEAD_LEN
-#define HTTPD_MAX_HEAD_LEN		1024
+// Max post buffer len. This is dynamically malloc'd as needed.
+#ifndef CONFIG_EHTTPD_MAX_POST_SIZE
+# define CONFIG_EHTTPD_MAX_POST_SIZE 2048
 #endif
 
-//Max post buffer len. This is dynamically malloc'ed if needed.
-#ifndef HTTPD_MAX_POST_LEN
-#define HTTPD_MAX_POST_LEN		2048
-#endif
-
-//Max send buffer len
-#ifndef HTTPD_MAX_SENDBUFF_LEN
-#define HTTPD_MAX_SENDBUFF_LEN	2048
-#endif
-
-//If some data can't be sent because the underlaying socket doesn't accept the data (like the nonos
-//layer is prone to do), we put it in a backlog that is dynamically malloc'ed. This defines the max
-//size of the backlog.
-#ifndef HTTPD_MAX_BACKLOG_SIZE
-#define HTTPD_MAX_BACKLOG_SIZE	(4*1024)
-#endif
-
-//Max length of CORS token. This amount is allocated per connection.
-#define MAX_CORS_TOKEN_LEN 256
-
-typedef enum
-{
-	HTTPD_CGI_MORE,
-	HTTPD_CGI_DONE,
-	HTTPD_CGI_NOTFOUND,
-	HTTPD_CGI_AUTHENTICATED
-} CgiStatus;
-
-typedef enum
-{
-	HTTPD_METHOD_GET,
-	HTTPD_METHOD_POST,
-	HTTPD_METHOD_OPTIONS,
-	HTTPD_METHOD_PUT,
-	HTTPD_METHOD_PATCH,
-	HTTPD_METHOD_DELETE
-} RequestTypes;
-
-typedef enum
-{
-	HTTPD_TRANSFER_CLOSE,
-	HTTPD_TRANSFER_CHUNKED,
-	HTTPD_TRANSFER_NONE
-} TransferModes;
-
-typedef struct HttpdPriv HttpdPriv;
-typedef struct HttpdConnData HttpdConnData;
-typedef struct HttpdPostData HttpdPostData;
-typedef struct HttpdInstance HttpdInstance;
+#define container_of(ptr, type, member) ({                      \
+        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
+        (type *)( (char *)__mptr - offsetof(type, member) );})
 
 
-typedef CgiStatus (* cgiSendCallback)(HttpdConnData *connData);
-typedef CgiStatus (* cgiRecvHandler)(HttpdInstance *pInstance, HttpdConnData *connData, char *data, int len);
+/*********************
+ * \section Typedefs
+ *********************/
 
-#ifdef CONFIG_ESPHTTPD_BACKLOG_SUPPORT
-struct HttpSendBacklogItem {
-	int len;
-	HttpSendBacklogItem *next;
-	char data[];
+typedef struct ehttpd_route_t ehttpd_route_t;
+typedef struct ehttpd_inst_t ehttpd_inst_t;
+typedef struct ehttpd_conn_t ehttpd_conn_t;
+typedef struct ehttpd_post_t ehttpd_post_t;
+typedef struct espfs_fs_t espfs_fs_t;
+
+typedef enum ehttpd_flags_t ehttpd_flags_t;
+typedef enum ehttpd_status_t ehttpd_status_t;
+typedef enum ehttpd_method_t ehttpd_method_t;
+
+typedef ehttpd_status_t (*ehttpd_route_handler_t)(ehttpd_conn_t *conn);
+typedef ehttpd_status_t (*ehttpd_recv_handler_t)(ehttpd_conn_t *conn,
+        void *buf, int len);
+typedef void (*ehttpd_thread_func_t)(void *arg);
+typedef void (*ehttpd_timer_handler_t)(void *arg);
+
+
+/*********************
+ * \section Instance
+ *********************/
+
+enum ehttpd_flags_t {
+    EHTTPD_FLAG_NONE          = 0,
+    EHTTPD_FLAG_TLS           = (1 << 0),
+    EHTTPD_FLAG_FREE_CONN_BUF = (1 << 1),
 };
-#endif
-
-//Private data for http connection
-struct HttpdPriv {
-	char head[HTTPD_MAX_HEAD_LEN];
-#ifdef CONFIG_ESPHTTPD_CORS_SUPPORT
-	char corsToken[MAX_CORS_TOKEN_LEN];
-#endif
-	int headPos;
-	char sendBuff[HTTPD_MAX_SENDBUFF_LEN];
-	int sendBuffLen;
-
-	/** NOTE: chunkHdr, if valid, points at memory assigned to sendBuff
-		so it doesn't have to be freed */
-	char *chunkHdr;
-
-#ifdef CONFIG_ESPHTTPD_BACKLOG_SUPPORT
-	HttpSendBacklogItem *sendBacklog;
-	int sendBacklogSize;
-#endif
-	int flags;
-};
-
-//A struct describing the POST data sent inside the http connection.  This is used by the CGI functions
-struct HttpdPostData {
-	int len;				// POST Content-Length
-	int buffSize;			// The maximum length of the post buffer
-	int buffLen;			// The amount of bytes in the current post buffer
-	int received;			// The total amount of bytes received so far
-	char *buff;				// Actual POST data buffer
-	char *multipartBoundary; // Pointer to the start of the multipart boundary value in priv.head
-};
-
-//A struct describing a http connection. This gets passed to cgi functions.
-struct HttpdConnData {
-	RequestTypes requestType;
-	char *url;				// The URL requested, without hostname or GET arguments
-	const char *route;		// The route matched.
-	char *getArgs;			// The GET arguments for this request, if any.
-	const void *cgiArg;		// Argument to the CGI function, as stated as the 3rd argument of
-							// the builtInUrls entry that referred to the CGI function.
-	const void *cgiArg2;	// 4th argument of the builtInUrls entries, used to pass template file to the tpl handler.
-	void *cgiData;			// Opaque data pointer for the CGI function
-	char *hostName;			// Host name field of request
-	HttpdPriv priv;		// Data for internal httpd housekeeping
-	cgiSendCallback cgi;	// CGI function pointer
-	cgiRecvHandler recvHdl;	// Handler for data received after headers, if any
-	HttpdPostData post;	// POST data structure
-	bool isConnectionClosed;
-};
-
-//A struct describing an url. This is the main struct that's used to send different URL requests to
-//different routines.
-typedef struct {
-	const char *url;
-	cgiSendCallback cgiCb;
-	const void *cgiArg;
-	const void *cgiArg2;
-} HttpdBuiltInUrl;
-
-const char *httpdCgiEx;  /* Magic for use in CgiArgs to interpret CgiArgs2 as HttpdCgiExArg */
-
-typedef struct {
-	void (*headerCb)(HttpdConnData *connData);
-	const char *mimetype;
-	const char *basepath;
-} HttpdCgiExArg;
-
-void httpdRedirect(HttpdConnData *conn, const char *newUrl);
-
-// Decode a percent-encoded value.
-// Takes the valLen bytes stored in val, and converts it into at most retLen bytes that
-// are stored in the ret buffer. ret is always null terminated.
-// @return True if decoding fit into the ret buffer, false if not
-bool httpdUrlDecode(const char *val, int valLen, char *ret, int retLen, int* bytesWritten);
-
-int httpdFindArg(const char *line, const char *arg, char *buff, int buffLen);
-
-typedef enum
-{
-	HTTPD_FLAG_NONE = (1 << 0),
-	HTTPD_FLAG_SSL = (1 << 1)
-} HttpdFlags;
-
-typedef enum
-{
-	InitializationSuccess,
-	InitializationFailure
-} HttpdInitStatus;
-
-/** Common elements to the core server code */
-typedef struct HttpdInstance
-{
-	const HttpdBuiltInUrl *builtInUrls;
-
-	int maxConnections;
-} HttpdInstance;
-
-typedef enum
-{
-	CallbackSuccess,
-	CallbackErrorOutOfConnections,
-	CallbackErrorCannotFindConnection,
-	CallbackErrorMemory,
-	CallbackError
-} CallbackStatus;
-
-const char *httpdGetMimetype(const char *url);
-void httpdSetTransferMode(HttpdConnData *conn, TransferModes mode);
-void httpdStartResponse(HttpdConnData *conn, int code);
-void httpdHeader(HttpdConnData *conn, const char *field, const char *val);
-void httpdEndHeaders(HttpdConnData *conn);
 
 /**
- * Get the value of a certain header in the HTTP client head
- * Returns true when found, false when not found.
+ * \brief A struct that describes a route
  *
- * NOTE: 'ret' will be null terminated
- *
- * @param retLen is the number of bytes available in 'ret'
+ * This is used to send dispatch URL requests to route handlers.
  */
-bool httpdGetHeader(HttpdConnData *conn, const char *header, char *ret, int retLen);
+struct ehttpd_route_t {
+    const char *route; /**< path expression for this route */
+    ehttpd_route_handler_t handler; /**< route handler function */
+    const void *arg; /**< first argument */
+    const void *arg2; /**< second argument */
+};
 
-int httpdSend(HttpdConnData *conn, const char *data, int len);
-int httpdSend_js(HttpdConnData *conn, const char *data, int len);
-int httpdSend_html(HttpdConnData *conn, const char *data, int len);
-void httpdFlushSendBuffer(HttpdInstance *pInstance, HttpdConnData *conn);
-CallbackStatus httpdContinue(HttpdInstance *pInstance, HttpdConnData *conn);
-CallbackStatus httpdConnSendStart(HttpdInstance *pInstance, HttpdConnData *conn);
-void httpdConnSendFinish(HttpdInstance *pInstance, HttpdConnData *conn);
-void httpdAddCacheHeaders(HttpdConnData *connData, const char *mime);
+/**
+ * \brief A struct for httpd instances
+ *
+ * This struct is shared between all connections.
+ */
+struct ehttpd_inst_t {
+    const ehttpd_route_t *routes; /**< a list of \a ehttpd_route_t */
+    espfs_fs_t *espfs; /**< \a espfs_fs_t instance */
+    void *user; /**< user data */
+};
 
-//Platform dependent code should call these.
-CallbackStatus httpdSentCb(HttpdInstance *pInstance, HttpdConnData *pConn);
-CallbackStatus httpdRecvCb(HttpdInstance *pInstance, HttpdConnData *pConn, char *data, unsigned short len);
-CallbackStatus httpdDisconCb(HttpdInstance *pInstance, HttpdConnData *pConn);
+/**
+ * \brief Create an esphttpd instance
+ *
+ * \return httpd instance or NULL on error
+ *
+ * \par Description
+ * \verbatim embed:rst:leading-asterisk
+ *
+ * This is equivalent to calling :c:func:`ehttpd_init_ex()` with addr set to
+ * **INADDR_ANY** and port 80 or 443 depending if **EHTTPD_FLAG_TLS** is set.
+ * ``conn_buf`` memory allocation handled automatically.
+ *
+ * \endverbatim */
+ehttpd_inst_t *ehttpd_init(
+    const ehttpd_route_t *routes, /** [in] route list with NULL sentinel */
+    size_t conn_max, /** [in] max number of concurrent connections */
+    ehttpd_flags_t flags /** [in] configuration flags */
+);
 
-/** NOTE: httpdConnectCb() cannot fail */
-void httpdConnectCb(HttpdInstance *pInstance, HttpdConnData *pConn);
+/**
+ * \brief Create an esphttpd instance
+ *
+ * \return httpd instance or NULL on error
+ */
+ehttpd_inst_t *ehttpd_init_ex(
+    const ehttpd_route_t *routes, /** [in] route list with NULL sentinel */
+    struct sockaddr *addr, /** [in] bind sockaddr_in */
+    void *conn_buf, /** [in] buffer for connections */
+    size_t conn_max, /** [in] max number of concurrent connections */
+    ehttpd_flags_t flags /** [in] configuration flags */
+);
 
-#define esp_container_of(ptr, type, member) ({                      \
-        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
-        (type *)( (char *)__mptr - offsetof(type,member) );})
+/**
+ * \brief Return the size in bytes needed for ``conn_max`` connections
+ */
+size_t ehttpd_get_conn_buf_size(
+    size_t conn_max /** [in] max number of concurrent connections */
+);
 
-#ifdef CONFIG_ESPHTTPD_SHUTDOWN_SUPPORT
-void httpdShutdown(HttpdInstance *pInstance);
-#endif
+/**
+ * \brief Start the httpd server
+ *
+ * \return **true** on sucess or **false** on error
+ */
+bool ehttpd_start(
+    ehttpd_inst_t *inst /** [in] httpd instance */
+);
+
+/**
+ * \brief Lock the instance mutex
+ */
+void ehttpd_lock(
+    ehttpd_inst_t *inst /** [in] httpd instance */
+);
+
+/**
+ * \brief Unlock the instance mutex
+ */
+void ehttpd_unlock(
+    ehttpd_inst_t *inst /** [in] httpd instance */
+);
+
+#if defined(CONFIG_EHTTPD_TLS_MBEDTLS) || defined(CONFIG_EHTTPD_TLS_OPENSSL)
+/**
+ * \brief Set the ssl certificate and private key (in DER format)
+ *
+ * \note
+ * \verbatim embed:rst:leading-asterisk
+ *
+ * This requires **EHTTPD_SSL_MBEDTLS** or **EHTTPD_SSL_OPENSSL**.
+ *
+ * This must be called before :c:func:`ehttpd_start()` if ``inst`` has
+ * **EHTTPD_FLAG_TLS** set.
+ *
+ * \endverbatim */
+void ehttpd_set_cert_and_key(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    const void *cert, /** [in] certificate data */
+    size_t cert_len, /** [in] certificate length */
+    const void *priv_key, /** [in] private key data */
+    size_t priv_key_len /** [in] private key length */
+);
+
+/**
+ * \brief Enable or disable client certificate verification
+ *
+ * \note
+ * \verbatim embed:rst:leading-asterisk
+ *
+ * This requires **EHTTPD_SSL_MBEDTLS** or **EHTTPD_SSL_OPENSSL**.
+ *
+ * This is disabled by default.
+ *
+ * \endverbatim */
+void ehttpd_set_client_validation(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    bool enable /** [in] true or false */
+);
+
+/**
+ * \brief Add a client certificate (in DER format)
+ *
+ * \note
+ * \verbatim embed:rst:leading-asterisk
+ *
+ * This requires **EHTTPD_SSL_MBEDTLS** or **EHTTPD_SSL_OPENSSL**.
+ *
+ * Enable client certificate verification using
+ * :c:func:`ehttpd_set_client_validation()`.
+ *
+ * \endverbatim */
+void ehttpd_add_client_cert(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    const void *cert, /** [in] certificate data */
+    size_t cert_len /** [in] certificate length */
+);
+#endif /* CONFIG_EHTTPD_TLS_OPENSSL */
+
+#ifdef CONFIG_EHTTPD_USE_SHUTDOWN
+/**
+ * \brief Shutdown httpd instance
+ */
+void ehttpd_shutdown(
+    ehttpd_inst_t *inst /** [in] httpd instance */
+);
+#endif /* CONFIG_EHTTPD_USE_SHUTDOWN */
+
+
+/***********************
+ * \section Connection
+ ***********************/
+
+enum ehttpd_status_t {
+    EHTTPD_STATUS_FOUND,
+    EHTTPD_STATUS_MORE,
+    EHTTPD_STATUS_DONE,
+    EHTTPD_STATUS_NOTFOUND,
+    EHTTPD_STATUS_AUTHENTICATED,
+};
+
+enum ehttpd_method_t {
+    EHTTPD_METHOD_UNKNOWN,
+    EHTTPD_METHOD_GET,
+    EHTTPD_METHOD_POST,
+    EHTTPD_METHOD_OPTIONS,
+    EHTTPD_METHOD_PUT,
+    EHTTPD_METHOD_PATCH,
+    EHTTPD_METHOD_DELETE,
+};
+
+/**
+ * \brief HTTP connection data
+ */
+struct ehttpd_conn_t {
+    ehttpd_inst_t *inst; /**< HTTP server instance */
+    ehttpd_method_t method; /**< request method */
+    const char *url; /**< the URL request without GET arguments */
+    char *args; /**< the URL arguments */
+    char *headers; /**< the start of the headers */
+    const char *hostname; /**< hostname field */
+    ehttpd_post_t *post; /**< POST/PUT data */
+    const ehttpd_route_t *route; /**< the route */
+    ehttpd_recv_handler_t recv_handler; /**< body recv handler */
+    void *user;  /**< user data */
+    bool closed; /**< closed indicator for routes */
+    ehttpd_conn_priv_t priv; /**< internal data */
+};
+
+/**
+ * \brief A struct describing the POST received
+ */
+struct ehttpd_post_t {
+    size_t len; /**< Content-Length header value */
+    size_t buf_len; /**< bytes in the post buffer */
+    size_t received; /**< total bytes received so far */
+    char *boundary; /**< start of the multipart boundary in conn->priv.head */
+    char buf[CONFIG_EHTTPD_MAX_POST_SIZE]; /**< data buffer */
+};
+
+/**
+ * \brief Get the value of a header in the connection's head buffer
+ *
+ * \return header value if found, NULL otherwise
+ */
+const char *ehttpd_get_header(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *name /** [in] header name */
+);
+
+/**
+ * \brief Set chunked HTTP transfer mode
+ *
+ * You should call this before calling ehttpd_start_response.
+ */
+void ehttpd_set_chunked_encoding(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    bool enable /** [in] true for chunked */
+);
+
+/**
+ * \brief Set connection closed header
+ *
+ * You should call this before ehttpd_start_response.
+ */
+void ehttpd_set_close(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    bool close /** [in] true to set close */
+);
+
+/**
+ * \brief Enqueue the response headers
+ */
+void ehttpd_start_response(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    int code /** [in] HTTP status code */
+);
+
+/**
+ * \brief Enqueue a custom HTTP header
+ */
+void ehttpd_header(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *name, /** [in] header name */
+    const char *value /** [in] header value */
+);
+
+/**
+ * \brief End the header section and start the message body
+ */
+void ehttpd_end_headers(
+    ehttpd_conn_t *conn /** [in] connection instance */
+);
+
+/**
+ * \brief Enqueue sensible cache control headers
+ */
+void ehttpd_add_cache_header(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *mime /** [in] mime type */
+);
+
+/**
+ * \brief Ready the send buffer for data
+ *
+ * \return free space in buffer or -1 if required lenght not met
+ */
+ssize_t ehttpd_prepare(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    void **buf, /** [out] buffer start */
+    size_t len /** [in] required length */
+);
+
+/**
+ * \brief Add data to send buffer
+ *
+ * \note If the lengh of the data exceeds the free space in the send buffer,
+ * no data is written to the buffer.
+ *
+ * \return true if sucessful or false if the buffer does not have enough space
+ */
+bool ehttpd_enqueue(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const void *buf, /** [in] data to add */
+    ssize_t len /** [in] data length or -1 for strlen() */
+);
+
+/**
+ * \brief Add formatted text to send buffer
+ *
+ * \note If the lengh of the data exceeds the free space in the send buffer,
+ * no data is written to the buffer.
+ *
+ * \return true if sucessful or false if the buffer does not have enough space
+ */
+bool ehttpd_enqueuef(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *fmt, /** [in] format string */
+    ... /** [in] args */
+);
+
+/**
+ * \brief Encode html entities and add to the send buffer
+ *
+ * \note If the lengh of the data exceeds the free space in the send buffer,
+ * no data is written to the buffer.
+ *
+ * \return true if sucessful or false if the buffer does not have enough space
+ */
+bool ehttpd_enqueue_html(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *buf, /** [in] data to add */
+    ssize_t len /** [in] data length or -1 for strlen() */
+);
+
+/**
+ * \brief Encode javascript and add to the send buffer
+ *
+ * \note If the lengh of the data exceeds the free space in the send buffer,
+ * no data is written to the buffer.
+ *
+ * \return true if sucessful or false if the buffer does not have enough space
+ */
+bool ehttpd_enqueue_js(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *data, /** [in] data to add */
+    ssize_t len /** [in] data length or -1 for strlen() */
+);
+
+/**
+ * \brief Flush the send buffer
+ */
+void ehttpd_flush(
+    ehttpd_conn_t *conn /** [in] connection instance */
+);
+
+/**
+ * \brief Return if connection is SSL or not
+ *
+ * \return true if SSL, false if not
+ *
+ * \note This function implementation is platform defined
+ */
+bool ehttpd_is_ssl(
+    ehttpd_conn_t *conn /** [in] connection instance */
+);
+
+/**
+ * \brief Send data over connection
+ *
+ * \return number of bytes that were actually written, or -1 on error
+ *
+ * \note This function implementation is platform defined
+ */
+ssize_t ehttpd_send(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    void *buf, /** [in] bytes */
+    size_t len /** [in] data length */
+);
+
+/**
+ * \brief Schedule a connection for close
+ *
+ * \note This function implementation is platform defined
+ */
+void ehttpd_disconnect(
+    ehttpd_conn_t *conn /** [in] connection instance */
+);
+
+
+/********************
+ * \section Utility
+ ********************/
+
+/**
+ * \brief Send a redirect response
+ */
+void ehttpd_redirect(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *url /** [in] url to redirect to */
+);
+
+/**
+ * \brief Decode a percent-encoded value
+ *
+ * \return actual number of bytes written excluding the NULL terminator
+ *
+ * \note Output buffer is always NULL terminated
+ */
+size_t ehttpd_url_decode(
+    const char *in, /** [in] input buffer */
+    ssize_t in_len, /** [in] input buffer len or -1 for strlen() */
+    char *out, /** [out] output buffer or NULL */
+    size_t *out_len /* [in,out] output buffer length, returns the total bytes
+                                required */
+);
+
+/**
+ * \brief Find an parameter in GET string or POST data
+ *
+ * \return actual number of bytes written excluding the NULL terminator, or -1
+ *         if not found
+ *
+ * \note Output buffer is always NULL terminated
+ */
+ssize_t ehttpd_find_param(
+    const char *needle, /** [in] parameter to search for */
+    const char *haystack, /** [in] GET or POST data to search */
+    char *out, /** [out] urldecoded output buffer or NULL */
+    size_t *out_len /** [in,out] output buffer length, returns total bytes
+                                  required */
+);
+
+/**
+ * \brief Return the mimetype for a given URL
+ *
+ * \return mime type string
+ */
+const char *ehttpd_get_mimetype(
+    const char *url /** [in] URL */
+);
+
+/**
+ * \brief Custom sprintf implementation
+ *
+ * \return number of characters written to str or -1 on error
+ */
+int ehttpd_sprintf(
+    char *str, /* [out] output string */
+    const char *format, /* [in] format string */
+    ... /* [in] args */
+);
+
+/**
+ * \brief Custom snprintf implementation
+ *
+ * \return number of characters that could have been written to str. A value
+ *         greater-than or equal to size indicates truncation.
+ */
+int ehttpd_snprintf(
+    char *str, /* [out] output string */
+    size_t size, /* [in] max length of str buffer */
+    const char *format, /* [in] format string */
+    ... /* [in] args */
+);
+
+/**
+ * \brief Custom vsnprintf implementation
+ *
+ * \return number of characters that could have been written to str. A value
+ *         greater-than or equal to size indicates truncation.
+ */
+int ehttpd_vsnprintf(
+    char *str, /* [out] output string */
+    size_t size, /* [in] max length of str buffer */
+    const char *format, /* [in] format string */
+    va_list va /* [in] args */
+);
+
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

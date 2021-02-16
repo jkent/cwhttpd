@@ -1,15 +1,5 @@
 build/
-espfs/mkespfsimage/*.o
-espfs/mkespfsimage/mkespfsimage
-webpages.espfs
-libesphttpd.a
-espfs/espfstest/*.o
-espfs/espfstest/espfstest
+docs/_build/
+__pycache__/
 *.DS_Store
-html_compressed/
-libwebpages-espfs.a
 *.swp
-standalone/CMakeCache.txt
-standalone/CMakeFiles/
-standalone/Makefile
-standalone/cmake_install.cmake

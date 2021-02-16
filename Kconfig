@@ -1,119 +1,144 @@
-#ESP-IDF Kconfig configuration file. Not used for ESP8266 RTOS/non-RTOS SDKs.
-menu "esphttpd"
+#ESP-IDF Kconfig configuration file.
+menu "libesphttpd"
 
-menuconfig ESPHTTPD_ENABLED
-    bool "esphttpd"
-    help
-        Select this option to enable libesphttpd and show the submodule with libesphttpd configuration
+choice
+	prompt "Log level"
+	default EHTTPD_LOG_LEVEL_WARNING
 
-config ESPHTTPD_STACK_SIZE
-	int "Stack size of ESP-HTTPD task"
-        depends on ESPHTTPD_ENABLED
-	range 1024 16384
-	default 4096
+config EHTTPD_LOG_LEVEL_NONE
+	bool "None"
+
+config EHTTPD_LOG_LEVEL_ERROR
+	bool "Error"
+
+config EHTTPD_LOG_LEVEL_WARNING
+	bool "Warning"
+
+config EHTTPD_LOG_LEVEL_INFO
+	bool "Info"
+
+config EHTTPD_LOG_LEVEL_DEBUG
+	bool "Debug"
+
+config EHTTPD_LOG_LEVEL_VERBOSE
+	bool "Verbose"
+
+endchoice # "Log level"
+
+config EHTTPD_DEFAULT_STACK_SIZE
+	int "Default task stack size"
+	range 1024 65535
+	default 8192
 	help
-		Stack size reserved for the esp-httpd main task plus CGIs.
+		Stack size reserved for the esphttpd task and route handlers.
 
-config ESPHTTPD_PROC_AFFINITY
-	bool "Processor Affinity Support"
-        depends on ESPHTTPD_ENABLED
+config EHTTPD_DEFAULT_USE_AFFINITY
+	bool "Enable affinity per task default"
 	default n
 	help
-		Enable Processor Affinity Support
+		Enable processor affinity Support
 
-config ESPHTTPD_PROC_CORE
-	int "Bind to Processor Core"
-        depends on ESPHTTPD_PROC_AFFINITY
+config EHTTPD_DEFAULT_AFFINITY
+	int "Core number for processor affinity"
+        depends on EHTTPD_DEFAULT_USE_AFFINITY
 	range 0 1
 	default 0
 	help
-		Select Core 0 or Core 1
+		Select core 0 or core 1
 
-config ESPHTTPD_PROC_PRI
+config EHTTPD_DEFAULT_PRIORITY
 	int "Process Task Priority"
-        depends on ESPHTTPD_ENABLED
-	range 1 17
+	range 1 31
 	default 4
 	help
-		Set esphttpd Process Task Priority
+		Set libesphttpd Process Task Priority
 
-config ESPHTTPD_SHUTDOWN_SUPPORT
+config EHTTPD_RECVBUF_SIZE
+	int "Max recv buffer size"
+	default 2048
+	help
+		This is statically allocated per server instance.
+
+config EHTTPD_SENDBUF_SIZE
+	int "Max send buffer size"
+	default 2048
+	help
+		This is statically allocated per connection.
+
+config EHTTPD_MAX_REQUEST_SIZE
+	int "Max length of request headers"
+	default 1024
+	help
+	    This is statically allocated per connection.
+
+config EHTTPD_LISTEN_BACKLOG
+	int "Listen backlog"
+	default 2
+	help
+		How many connections that can be waiting in the listen queue.
+
+config EHTTPD_USE_SHUTDOWN
 	bool "Enable shutdown support"
-	depends on ESPHTTPD_ENABLED
 	default n
 	help
 		Add support for server shutdown. Adds ~500 bytes of code.
 
-config ESPHTTPD_CORS_SUPPORT
-    bool "CORS support"
-        depends on ESPHTTPD_ENABLED
-    help
-        Enable support for CORS, cross origin resource sharing.
-        NOTE: Requires 256 bytes of RAM for each connection
+config EHTTPD_DEFAULT_CLOSE
+	bool "Default to closing connections"
+	default n
 
-config ESPHTTPD_USE_ESPFS
-	bool "Enable espfs filesystem"
-        depends on ESPHTTPD_ENABLED
+config EHTTPD_ENABLE_CORS
+	bool "Enable CORS support"
+	default n
+
+if EHTTPD_ENABLE_CORS
+
+config EHTTPD_CORS_ORIGIN
+	string "CORS origin"
+	default "*"
+	help
+		CORS allowed origin.
+
+config EHTTPD_CORS_METHODS
+	string "CORS methods"
+	default "GET,PUT,POST,DELETE,OPTIONS"
+	help
+		CORS allowed HTTP methods.
+
+endif # EHTTPD_ENABLE_CORS
+
+config EHTTPD_TCP_NODELAY
+	bool "Set TCP_NODELAY"
 	default y
 	help
-		Enables integration with espfs (readonly) filesystem.  You need to include espfs submodule in your project if enabled.
+		Set TCP_NODELAY to avoid waiting for a ACK to send multiple small
+		frames (It will disable Nagle's TCP Algorithm).  It can speed-up
+		transfers for small files.
 
-config ESPHTTPD_SO_REUSEADDR
-	bool "Set SO_REUSEADDR to avoid waiting for a port in TIME_WAIT."
-	depends on ESPHTTPD_ENABLED
+choice
+	prompt "TLS Support"
+	default EHTTPD_TLS_DISABLED
+	help
+		Enabling this allows the server to accept TLS connections.
+
+config EHTTPD_TLS_DISABLED
+	bool "Disabled"
+
+config EHTTPD_TLS_MBEDTLS
+	bool "Use MbedTLS"
+
+config EHTTPD_TLS_OPENSSL
+	bool "Use OpenSSL"
+	help
+		OpenSSL connections require ~32k of ram each.
+
+endchoice
+
+config EHTTPD_FW_OTA_FACTORY
+	bool "Allow OTA of factory partition"
 	default n
 	help
-		Requires LWIP_SO_REUSE to be enabled.
-
-		Sets the SO_REUSEADDR flag on a socket prior to attempting to bind(). Avoids the condition where
-		the bind() calls will fail while the port is in TIME_WAIT for a number of minutes.
-
-config ESPHTTPD_TCP_NODELAY
-	bool "Set TCP_NODELAY."
-	depends on ESPHTTPD_ENABLED
-	default y
-	help
-		Set TCP_NODELAY to avoid waiting for a ACK to send multiple small frames (It will disable Nagle's TCP Algorithm).  It can speed-up transfers for small files.
-
-config ESPHTTPD_SSL_SUPPORT
-	bool "Enable SSL support"
-        depends on ESPHTTPD_ENABLED
-	default n
-	help
-		SSL connections require ~32k of ram each.
-
-		Enabling this allows the server to be placed into ssl mode.
-
-config ESPHTTPD_BACKLOG_SUPPORT
-	bool "Write data to backlog when it can't be sent"
-        depends on ESPHTTPD_ENABLED
-	default n
-	help
-		A non-os specific option. FreeRTOS uses blocking sockets so data will always be sent and there is
-		no need for the backlog.
-
-		If you are using FreeRTOS you'll save codespace by leaving this option disabled.
-
-config ESPHTTPD_SANITIZE_URLS
-	bool "Sanitize client requests"
-	depends on ESPHTTPD_ENABLED
-	default y
-	help
-		Sanitize client's URL requests by treating multiple repeated slashes in the
-		URL's path as a single slash.
-
-config ESPHTTPD_SINGLE_REQUEST
-	bool "Single request per connection"
-	depends on ESPHTTPD_ENABLED
-	default n
-	help
-		Include the "Connection: close" header.  This is useful for captive portals.	
-
-config ESPHTTPD_ALLOW_OTA_FACTORY_APP
-	bool "Allow OTA of Factory Partition (not recommended)"
-	depends on ESPHTTPD_ENABLED
-	default n
-	help
-		Allows cgiUploadFirmware() in cgiflash.c to write to the Factory partition.  It it not recommended for production use.
+		Allows ehttpd_route_fw_upload() in route_flash.c to write to the
+		factory partition.  It it not recommended for production use.
 
 endmenu

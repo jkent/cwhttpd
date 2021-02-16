@@ -11,28 +11,28 @@ See the example js/html code for the GUI here: https://github.com/chmorgan/espht
 
 ## Functions defined in cgiflash.h
 
-* __cgiGetFirmwareNext()__
+* __ehttpd_route_fw_get_next()__
 Legacy function for ESP8266 (not needed for ESP32)
 
-* __cgiUploadFirmware()__
-CGI function writes HTTP POST data to flash.
+* __ehttpd_route_fw_upload()__
+route handler writes HTTP POST data to flash.
 
-* __cgiRebootFirmware()__
-CGI function reboots the ESP firmware after a short time-delay.
+* __ehttpd_route_fw_reboot()__
+route handler reboots the ESP firmware after a short time-delay.
 
-* __cgiSetBoot()__
-CGI function to change the selected boot partition.
+* __ehttpd_route_fw_set_boot()__
+route handler to change the selected boot partition.
 
-* __cgiEraseFlash()__
-CGI function to erase flash memory.  (only supports erasing data partitions)
+* __ehttpd_route_fw_erase_flash()__
+route handler to erase flash memory.  (only supports erasing data partitions)
 
-* __cgiGetFlashInfo()__
-CGI function returns a JSON object describing the partition table.  It can also verify the firmware images, but not by default because that process takes several seconds.
+* __ehttpd_route_fw_get_flash_info()__
+route handler returns a JSON object describing the partition table.  It can also verify the firmware images, but not by default because that process takes several seconds.
 
 ## Configuration Options
 
 * __Allow OTA of Factory Partition (not recommended)__
-Defines CONFIG_ESPHTTPD_ALLOW_OTA_FACTORY_APP.  This option allows cgiUploadFirmware() (in cgiflash.c) to write to the Factory partition.  It it not recommended for production use.  It is useful if you need to update the factory app via OTA for some reason.  To use it, build this project with CONFIG_ESPHTTPD_ALLOW_OTA_FACTORY_APP and upload it to one of the OTA partitions on your device.  Then reboot your device into that OTA and then you will be able to upload an image to the factory partition.
+Defines CONFIG_EHTTPD_FW_OTA_FACTORY.  This option allows ehttpd_route_fw_upload() (in cgiflash.c) to write to the Factory partition.  It it not recommended for production use.  It is useful if you need to update the factory app via OTA for some reason.  To use it, build this project with CONFIG_EHTTPD_FW_OTA_FACTORY and upload it to one of the OTA partitions on your device.  Then reboot your device into that OTA and then you will be able to upload an image to the factory partition.
 
 ## HTTP REST API
 
@@ -145,7 +145,7 @@ baseUri: http://me.local/flash
                           "success": true
                           "boot": "ota_0"
                         }
-                        
+
 /reboot:
     description: Reboot the processor
     get:
@@ -163,7 +163,7 @@ baseUri: http://me.local/flash
                           "success": true
                           "message": "Rebooting..."
                         }
-                        
+
 /upload:
     description: Upload APP
     post:
@@ -188,7 +188,7 @@ baseUri: http://me.local/flash
                               "success": true
                               "message": "Flash Success."
                           }
-                          
+
 /erase:
     description: Erase data
     get:
