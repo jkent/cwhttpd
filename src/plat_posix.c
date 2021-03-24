@@ -137,34 +137,17 @@ void ehttpd_captdns_recv(ehttpd_captdns_t *captdns);
  * \section Instance Functions
  *******************************/
 
-ehttpd_inst_t *ehttpd_init(const ehttpd_route_t *routes,
-        size_t conn_max, ehttpd_flags_t flags)
+ehttpd_inst_t *ehttpd_init(const ehttpd_route_t *routes, const char *addr,
+        void *conn_buf, size_t conn_max, ehttpd_flags_t flags)
 {
-    struct sockaddr_in addr;
-
-    void *conn_buf = malloc(ehttpd_get_conn_buf_size(conn_max));
     if (conn_buf == NULL) {
-        return NULL;
+        conn_buf = malloc(ehttpd_get_conn_buf_size(conn_max));
+        if (conn_buf == NULL) {
+            return NULL;
+        }
+        flags |= EHTTPD_FLAG_FREE_CONN_BUF;
     }
-    flags |= EHTTPD_FLAG_FREE_CONN_BUF;
 
-#if defined(CONFIG_EHTTPD_TLS_DISABLED)
-    flags &= ~EHTTPD_FLAG_TLS;
-#endif
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons((flags & EHTTPD_FLAG_TLS) ? 443 : 80);
-    addr.sin_addr.s_addr = INADDR_ANY;
-
-    return ehttpd_init_ex(routes, (struct sockaddr *) &addr, conn_buf,
-            conn_max, flags);
-}
-
-ehttpd_inst_t *ehttpd_init_ex(const ehttpd_route_t *routes,
-        struct sockaddr *addr, void *conn_buf, size_t conn_max,
-        ehttpd_flags_t flags)
-{
     posix_inst_t *posix_inst =
             (posix_inst_t *) malloc(sizeof(posix_inst_t));
     if (posix_inst == NULL) {
@@ -216,11 +199,23 @@ ehttpd_inst_t *ehttpd_init_ex(const ehttpd_route_t *routes,
 #endif
     }
 
-    posix_inst->listen_fd = -1;
     memcpy(&posix_inst->listen_addr, addr, sizeof(struct sockaddr_in));
+    if (addr == NULL) {
+        addr = (flags & EHTTPD_FLAG_TLS) ? "0.0.0.0:443" : "0.0.0.0:80";
+    }
+
+    char *s = strdup(addr);
+    char *p = strrchr(s, ':');
+    if (p) {
+        *p = '\0';
+        posix_inst->listen_addr.sin_port = htons(strtol(p + 1, NULL, 10));
+    }
+    inet_pton(AF_INET, s, &posix_inst->listen_addr.sin_addr);
+    free(s);
+
+    posix_inst->listen_fd = -1;
 
     posix_inst->captdns_fd = -1;
-
 #if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
     posix_inst->shutdown_fd = -1;
 #endif

@@ -44,10 +44,15 @@ has some experience with the SDK.
 
 ## Initializing libesphttpd
 
-Initialization is done by the `ehttpd_init(routes, conn_max, flags)` call,
-which returns an instance pointer. The routes is a list of url handlers.
-conn_max is the number of concurrent connections allowed. flags can be set to
-EHTTPD_FLAG_TLS to enable ssl.
+Initialization is done by the
+`ehttpd_init(routes, addr, conn_buf, conn_max, flags)` call, which returns an
+instance pointer. The routes is a list of url handlers. addr is the address to
+listen on, which can be NULL to listen on 0.0.0.0:80 or 0.0.0.0:443 depending
+if TLS is enabled or not. conn_buf is pointer to memory to use for connection
+data. It can be statically allocated, dynamically allocated, or NULL if you
+wish to have the pool managed automatically. conn_max is the maximum number of
+concurrent connections allowed. flags can be set to EHTTPD_FLAG_TLS to enable
+TLS.
 
 ```c
 const ehttpd_route_t routes[] = {

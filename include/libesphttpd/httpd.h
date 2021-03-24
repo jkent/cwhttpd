@@ -101,30 +101,13 @@ struct ehttpd_inst_t {
  * \brief Create an esphttpd instance
  *
  * \return httpd instance or NULL on error
- *
- * \par Description
- * \verbatim embed:rst:leading-asterisk
- *
- * This is equivalent to calling :c:func:`ehttpd_init_ex()` with addr set to
- * **INADDR_ANY** and port 80 or 443 depending if **EHTTPD_FLAG_TLS** is set.
- * ``conn_buf`` memory allocation handled automatically.
- *
- * \endverbatim */
-ehttpd_inst_t *ehttpd_init(
-    const ehttpd_route_t *routes, /** [in] route list with NULL sentinel */
-    size_t conn_max, /** [in] max number of concurrent connections */
-    ehttpd_flags_t flags /** [in] configuration flags */
-);
-
-/**
- * \brief Create an esphttpd instance
- *
- * \return httpd instance or NULL on error
  */
-ehttpd_inst_t *ehttpd_init_ex(
-    const ehttpd_route_t *routes, /** [in] route list with NULL sentinel */
-    struct sockaddr *addr, /** [in] bind sockaddr_in */
-    void *conn_buf, /** [in] buffer for connections */
+ehttpd_inst_t *ehttpd_init(
+    const ehttpd_route_t *routes, /** [in] route list */
+    const char *addr, /** [in] bind address:port, or if NULL, 0.0.0.0:80 or
+                               0.0.0.0:443 depending on TLS */
+    void *conn_buf, /** [in] buffer for connection data, or NULL for
+                             automatically managed */
     size_t conn_max, /** [in] max number of concurrent connections */
     ehttpd_flags_t flags /** [in] configuration flags */
 );

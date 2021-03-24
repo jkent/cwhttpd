@@ -7,7 +7,6 @@ Functions
 ^^^^^^^^^
 
 .. doxygenfunction:: ehttpd_init
-.. doxygenfunction:: ehttpd_init_ex
 .. doxygenfunction:: ehttpd_get_conn_buf_size
 .. doxygenfunction:: ehttpd_start
 .. doxygenfunction:: ehttpd_lock
