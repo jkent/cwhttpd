@@ -9,6 +9,11 @@ Functions
 .. doxygenfunction:: ehttpd_init
 .. doxygenfunction:: ehttpd_get_conn_buf_size
 .. doxygenfunction:: ehttpd_start
+.. doxygenfunction:: ehttpd_route_insert_head
+.. doxygenfunction:: ehttpd_route_insert_tail
+.. doxygenfunction:: ehttpd_route_insert_after
+.. doxygenfunction:: ehttpd_route_remove
+.. doxygenfunction:: ehttpd_route_remove_head
 .. doxygenfunction:: ehttpd_lock
 .. doxygenfunction:: ehttpd_unlock
 .. doxygenfunction:: ehttpd_set_cert_and_key

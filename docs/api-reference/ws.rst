@@ -8,7 +8,6 @@ Functions
 
 .. doxygenfunction:: ehttpd_ws_send
 .. doxygenfunction:: ehttpd_ws_close
-.. doxygenfunction:: ehttpd_ws_recv
 .. doxygenfunction:: ehttpd_ws_broadcast
 
 Structures

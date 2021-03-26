@@ -34,7 +34,7 @@ static bool get_filepath(ehttpd_conn_t *conn, char *path, size_t len,
 {
     size_t out_len = 0;
     const char *url = conn->url;
-    const char *route = conn->route->route;
+    const char *route = conn->route->path;
     const char *arg = conn->route->arg;
 
     while (*route == *url) {
@@ -410,7 +410,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
 
         if (*data->filename == '\0') {
             const char *url = conn->url;
-            const char *route_url = conn->route->route;
+            const char *route_url = conn->route->path;
 
             while (*url && *route_url++ == *url++);
             strlcpy(data->filename, url,

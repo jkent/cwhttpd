@@ -142,13 +142,12 @@ ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
         ehttpd_timer_handler_t cb, void *arg)
 {
     struct ehttpd_timer_t *timer =
-            (struct ehttpd_timer_t *) malloc(sizeof(struct ehttpd_timer_t));
+            (struct ehttpd_timer_t *) calloc(1, sizeof(struct ehttpd_timer_t));
     if (timer == NULL) {
-        EHTTPD_LOGE(__func__, "malloc failed");
+        EHTTPD_LOGE(__func__, "calloc failed");
         return NULL;
     }
 
-    memset(timer, 0, sizeof(struct ehttpd_timer_t));
     timer->ts.it_value.tv_sec = ms / 1000;
     timer->ts.it_value.tv_nsec = (ms % 1000) * 1000000;
     if (autoreload) {

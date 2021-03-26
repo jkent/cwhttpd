@@ -69,9 +69,8 @@ typedef void (*ehttpd_timer_handler_t)(void *arg);
  *********************/
 
 enum ehttpd_flags_t {
-    EHTTPD_FLAG_NONE          = 0,
-    EHTTPD_FLAG_TLS           = (1 << 0),
-    EHTTPD_FLAG_FREE_CONN_BUF = (1 << 1),
+    EHTTPD_FLAG_NONE                = 0,
+    EHTTPD_FLAG_TLS                 = (1 << 0),
 };
 
 /**
@@ -79,12 +78,13 @@ enum ehttpd_flags_t {
  *
  * This is used to send dispatch URL requests to route handlers.
  */
-struct ehttpd_route_t {
-    const char *route; /**< path expression for this route */
+typedef struct ehttpd_route_t {
+    ehttpd_route_t *next; /**< next route entry */
     ehttpd_route_handler_t handler; /**< route handler function */
-    const void *arg; /**< first argument */
-    const void *arg2; /**< second argument */
-};
+    void *arg; /**< first argument */
+    void *arg2; /**< second argument */
+    char path[]; /**< path expression for this route */
+} ehttpd_route_t;
 
 /**
  * \brief A struct for httpd instances
@@ -92,7 +92,8 @@ struct ehttpd_route_t {
  * This struct is shared between all connections.
  */
 struct ehttpd_inst_t {
-    const ehttpd_route_t *routes; /**< a list of \a ehttpd_route_t */
+    ehttpd_route_t *route_head; /* head of route linked list */
+    ehttpd_route_t *route_tail; /* tail of route linked list */
     espfs_fs_t *espfs; /**< \a espfs_fs_t instance */
     void *user; /**< user data */
 };
@@ -103,7 +104,6 @@ struct ehttpd_inst_t {
  * \return httpd instance or NULL on error
  */
 ehttpd_inst_t *ehttpd_init(
-    const ehttpd_route_t *routes, /** [in] route list */
     const char *addr, /** [in] bind address:port, or if NULL, 0.0.0.0:80 or
                                0.0.0.0:443 depending on TLS */
     void *conn_buf, /** [in] buffer for connection data, or NULL for
@@ -117,6 +117,52 @@ ehttpd_inst_t *ehttpd_init(
  */
 size_t ehttpd_get_conn_buf_size(
     size_t conn_max /** [in] max number of concurrent connections */
+);
+
+/**
+ * \brief Insert a route at the head of the route list
+ *
+ * \returns The inserted route
+ */
+ehttpd_route_t *ehttpd_route_insert_head(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    const char *path /** [in] path expression for this route */
+);
+
+/**
+ * \brief Append a route to the tail of the route list
+ *
+ * \returns The inserted route
+ */
+ehttpd_route_t *ehttpd_route_insert_tail(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    const char *path /** [in] path expression for this route */
+);
+
+/**
+ * \brief Insert a route to the route list after a given route
+ *
+ * \returns The inserted route
+ */
+ehttpd_route_t *ehttpd_route_insert_after(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    ehttpd_route_t *after, /** [in] route entry to insert after */
+    const char *path /** [in] path expression for this route */
+);
+
+/**
+ * \brief Remove a route
+ */
+void ehttpd_route_remove(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    ehttpd_route_t *route /** [in] route entry to remove */
+);
+
+/**
+ * \brief Remove a route from head of the route list
+ */
+void ehttpd_route_remove_head(
+    ehttpd_inst_t *inst /** [in] httpd instance */
 );
 
 /**
@@ -213,10 +259,10 @@ void ehttpd_shutdown(
  ***********************/
 
 enum ehttpd_status_t {
+    EHTTPD_STATUS_NOTFOUND,
     EHTTPD_STATUS_FOUND,
     EHTTPD_STATUS_MORE,
     EHTTPD_STATUS_DONE,
-    EHTTPD_STATUS_NOTFOUND,
     EHTTPD_STATUS_AUTHENTICATED,
 };
 

@@ -22,6 +22,79 @@
 #endif
 
 
+ehttpd_route_t *ehttpd_route_insert_head(ehttpd_inst_t *inst, const char *path)
+{
+    ehttpd_route_t *route = calloc(1, sizeof(ehttpd_route_t) + strlen(path));
+    if (route == NULL) {
+        return NULL;
+    }
+
+    if ((route->next = inst->route_head) == NULL) {
+        inst->route_tail = route;
+    }
+    inst->route_head = route;
+
+    strcpy(route->path, path);
+    return route;
+}
+
+ehttpd_route_t *ehttpd_route_insert_tail(ehttpd_inst_t *inst, const char *path)
+{
+    ehttpd_route_t *route = calloc(1, sizeof(ehttpd_route_t) + strlen(path));
+    if (route == NULL) {
+        return NULL;
+    }
+
+    if (inst->route_head == NULL) {
+        inst->route_head = route;
+    } else {
+        inst->route_tail->next = route;
+    }
+    inst->route_tail = route;
+
+    strcpy(route->path, path);
+    return route;
+}
+
+ehttpd_route_t *ehttpd_route_insert_after(ehttpd_inst_t *inst,
+        ehttpd_route_t *after, const char *path)
+{
+    ehttpd_route_t *route = calloc(1, sizeof(ehttpd_route_t) + strlen(path));
+    if (route == NULL) {
+        return NULL;
+    }
+
+    if ((route->next = after->next) == NULL) {
+        inst->route_tail = route;
+    }
+    after->next = route;
+
+    strcpy(route->path, path);
+    return route;
+}
+
+void ehttpd_route_remove(ehttpd_inst_t *inst, ehttpd_route_t *route)
+{
+    if (route == inst->route_head) {
+        ehttpd_route_remove_head(inst);
+    } else {
+        ehttpd_route_t *elm = inst->route_head;
+        while (elm != route) {
+            elm = elm->next;
+        }
+        if ((elm->next = elm->next->next) == NULL) {
+            inst->route_tail = elm->next;
+        }
+    }
+}
+
+void ehttpd_route_remove_head(ehttpd_inst_t *inst)
+{
+    if ((inst->route_head = inst->route_head->next) == NULL) {
+        inst->route_tail = inst->route_head;
+    }
+}
+
 const char *ehttpd_get_header(ehttpd_conn_t *conn, const char *name)
 {
     char *p = conn->headers;
@@ -431,7 +504,7 @@ static ehttpd_status_t ehttpd_route_not_found(ehttpd_conn_t *conn)
 }
 
 static const ehttpd_route_t route_not_found =
-    {NULL, ehttpd_route_not_found, NULL, NULL};
+    {NULL, ehttpd_route_not_found, NULL, NULL, "<not found>"};
 
 // Returns a static char *to a mime type for a given url to a file.
 const char *ehttpd_get_mimetype(const char *url)
@@ -610,24 +683,26 @@ static void process_request(ehttpd_conn_t *conn)
 #endif
 
     // find a route that can handle the request
-    const ehttpd_route_t *route = conn->inst->routes;
+    const ehttpd_route_t *route = conn->inst->route_head;
     while (true) {
-        while (route->route != NULL) {
-            if ((strcmp(route->route, conn->url) == 0) ||
-                    ((route->route[strlen(route->route) - 1] == '*') &&
-                    (strncmp(route->route, conn->url, strlen(route->route) - 1) == 0))) {
+        while (route != NULL) {
+            if ((strcmp(route->path, conn->url) == 0) ||
+                    ((route->path[strlen(route->path) - 1] == '*') &&
+                    (strncmp(route->path, conn->url, strlen(route->path) - 1) == 0))) {
                 conn->route = route;
                 conn->user = NULL;
                 break;
             }
-            route++;
+            route = route->next;
         }
 
-        if (route->route == NULL) {
+        if (route == NULL) {
             conn->route = &route_not_found;
         }
 
+        printf("handler %s\n", conn->route->path);
         ehttpd_status_t status = conn->route->handler(conn);
+        printf("hander returned %d\n", status);
         if (status == EHTTPD_STATUS_MORE) {
             ehttpd_flush(conn);
             break;
@@ -635,7 +710,7 @@ static void process_request(ehttpd_conn_t *conn)
             ehttpd_end_request(conn);
             break;
         } else if (status == EHTTPD_STATUS_NOTFOUND || status == EHTTPD_STATUS_AUTHENTICATED) {
-            route++; // look at the next route
+            route = route->next; // look at the next route
         }
     }
 }
@@ -757,12 +832,10 @@ static ehttpd_cb_status_t parse_headers(ehttpd_conn_t *conn)
     value = ehttpd_get_header(conn, "Content-Length");
     if (value != NULL) {
         if (conn->post == NULL) {
-            conn->post = malloc(sizeof(ehttpd_post_t));
+            conn->post = calloc(1, sizeof(ehttpd_post_t));
             if (conn->post == NULL) {
-                EHTTPD_LOGE(__func__, "malloc failed %d bytes", sizeof(ehttpd_post_t));
+                EHTTPD_LOGE(__func__, "calloc failed %d bytes", sizeof(ehttpd_post_t));
                 return EHTTPD_CB_ERROR_MEMORY;
-            } else {
-                memset(conn->post, 0, sizeof(*conn->post));
             }
         }
         if (conn->post != NULL) {
@@ -776,12 +849,10 @@ static ehttpd_cb_status_t parse_headers(ehttpd_conn_t *conn)
             // It's multipart form data so let's pull out the boundary
             // TODO: implement multipart support in the server
             if (conn->post == NULL) {
-                conn->post = malloc(sizeof(ehttpd_post_t));
+                conn->post = calloc(1, sizeof(ehttpd_post_t));
                 if (conn->post == NULL) {
-                    EHTTPD_LOGE(__func__, "malloc failed %d bytes", sizeof(ehttpd_post_t));
+                    EHTTPD_LOGE(__func__, "calloc failed %d bytes", sizeof(ehttpd_post_t));
                     return EHTTPD_CB_ERROR_MEMORY;
-                } else {
-                    memset(conn->post, 0, sizeof(*conn->post));
                 }
             }
             if (conn->post != NULL) {

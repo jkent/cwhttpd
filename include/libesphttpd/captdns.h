@@ -23,23 +23,6 @@ extern "C" {
 typedef struct ehttpd_captdns_t ehttpd_captdns_t;
 
 /**
- * \brief Start the captdns service
- *
- * \return \li a captdns instance or NULL on error
- *
- * \par Description
- * \verbatim embed:rst:leading-asterisk
- *
- * This starts listening for DNS queries on **0.0.0.0:53**.
- *
- * See :cpp:func:`ehttpd_captdns_start_ex()` for more details.
- *
- * \endverbatim */
-ehttpd_captdns_t *ehttpd_captdns_start(
-    ehttpd_inst_t *inst /** [in] initialized httpd instance */
-);
-
-/**
  * \brief Start the captdns service with custom bind
  *
  * \return \li a captdns instance or NULL on error
@@ -66,9 +49,9 @@ ehttpd_captdns_t *ehttpd_captdns_start(
  *     **http://esp.nonet** will be returned.
  *
  * \endverbatim */
-ehttpd_captdns_t *ehttpd_captdns_start_ex(
+ehttpd_captdns_t *ehttpd_captdns_start(
     ehttpd_inst_t *inst, /** [in] initialized httpd instance */
-    struct sockaddr *addr /** [in] address/port to bind */
+    const char *addr /** [in] address:port to bind */
 );
 
 /**

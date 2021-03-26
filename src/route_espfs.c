@@ -22,7 +22,7 @@ static ehttpd_status_t get_filepath(ehttpd_conn_t *conn, char *path,
 {
     size_t out_len = 0;
     const char *url = conn->url;
-    const char *route = conn->route->route;
+    const char *route = conn->route->path;
     const char *arg = conn->route->arg;
 
     while (*url && *route == *url) {

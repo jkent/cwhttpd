@@ -47,6 +47,8 @@
 # endif
 #endif
 
+#pragma GCC diagnostic ignored "-Wunused-label"
+
 #ifndef CONFIG_EHTTPD_RECVBUF_SIZE
 # define CONFIG_EHTTPD_RECVBUF_SIZE 2048
 #endif
@@ -137,24 +139,56 @@ void ehttpd_captdns_recv(ehttpd_captdns_t *captdns);
  * \section Instance Functions
  *******************************/
 
-ehttpd_inst_t *ehttpd_init(const ehttpd_route_t *routes, const char *addr,
-        void *conn_buf, size_t conn_max, ehttpd_flags_t flags)
+static void ehttpd_free(ehttpd_inst_t *inst)
+{
+    posix_inst_t *posix_inst = inst_to_posix(inst);
+
+    ehttpd_mutex_delete(posix_inst->mutex);
+
+    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+        free(posix_inst->ssl);
+#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
+        SSL_CTX_free(posix_inst->ssl);
+#endif
+    }
+
+    if (posix_inst->flags & EHTTPD_FLAG_MANAGED_CONN_BUF) {
+        free(posix_inst->conn_buf);
+    }
+    while (posix_inst->inst.route_head) {
+        ehttpd_route_remove_head(&posix_inst->inst);
+    }
+    free(posix_inst);
+}
+
+ehttpd_inst_t *ehttpd_init(const char *addr, void *conn_buf, size_t conn_max,
+        ehttpd_flags_t flags)
 {
     if (conn_buf == NULL) {
-        conn_buf = malloc(ehttpd_get_conn_buf_size(conn_max));
+        conn_buf = calloc(1, ehttpd_get_conn_buf_size(conn_max));
         if (conn_buf == NULL) {
             return NULL;
         }
-        flags |= EHTTPD_FLAG_FREE_CONN_BUF;
+        flags |= EHTTPD_FLAG_MANAGED_CONN_BUF;
     }
 
     posix_inst_t *posix_inst =
-            (posix_inst_t *) malloc(sizeof(posix_inst_t));
+            (posix_inst_t *) calloc(1, sizeof(posix_inst_t));
     if (posix_inst == NULL) {
-        EHTTPD_LOGE(__func__, "malloc");
+        EHTTPD_LOGE(__func__, "calloc");
         goto err;
     }
-    memset(posix_inst, 0, sizeof(posix_inst_t));
+
+    posix_inst->listen_fd = -1;
+    posix_inst->captdns_fd = -1;
+#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
+    posix_inst->shutdown_fd = -1;
+#endif
+
+    posix_inst->flags = flags;
+    posix_inst->conn_buf = conn_buf;
+    posix_inst->conn_max = conn_max;
 
     posix_inst->mutex = ehttpd_mutex_create(true);
     if (posix_inst->mutex == NULL) {
@@ -199,7 +233,6 @@ ehttpd_inst_t *ehttpd_init(const ehttpd_route_t *routes, const char *addr,
 #endif
     }
 
-    memcpy(&posix_inst->listen_addr, addr, sizeof(struct sockaddr_in));
     if (addr == NULL) {
         addr = (flags & EHTTPD_FLAG_TLS) ? "0.0.0.0:443" : "0.0.0.0:80";
     }
@@ -213,25 +246,10 @@ ehttpd_inst_t *ehttpd_init(const ehttpd_route_t *routes, const char *addr,
     inet_pton(AF_INET, s, &posix_inst->listen_addr.sin_addr);
     free(s);
 
-    posix_inst->listen_fd = -1;
-
-    posix_inst->captdns_fd = -1;
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-    posix_inst->shutdown_fd = -1;
-#endif
-
-    posix_inst->flags = flags;
-    posix_inst->conn_buf = conn_buf;
-    posix_inst->conn_max = conn_max;
-    posix_inst->inst.routes = routes;
-
     return &posix_inst->inst;
 
 err:
-    if (flags & EHTTPD_FLAG_FREE_CONN_BUF) {
-        free(conn_buf);
-    }
-    free(posix_inst);
+    ehttpd_free(&posix_inst->inst);
     return NULL;
 }
 
@@ -247,6 +265,7 @@ bool ehttpd_start(ehttpd_inst_t *inst)
     posix_inst->thread = ehttpd_thread_create(server_task, posix_inst, NULL);
     if (posix_inst->thread == NULL) {
         EHTTPD_LOGE(__func__, "thread create");
+        ehttpd_free(&posix_inst->inst);
         return false;
     }
 
@@ -284,7 +303,7 @@ void ehttpd_shutdown(ehttpd_inst_t *inst)
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = htons(posix_inst->shutdown_port);
 
-    EHTTPD_LOGI(__func__, "sending shutdown", posix_inst->shutdown_port);
+    EHTTPD_LOGI(__func__, "sending shutdown");
 
     sendto(fd, "shutdown", 8, 0, (struct sockaddr *) &addr, sizeof(addr));
     close(fd);
@@ -727,12 +746,8 @@ static void server_task(void *arg)
 #endif
     }
 
-    if (posix_inst->flags & EHTTPD_FLAG_FREE_CONN_BUF) {
-        free(posix_inst->conn_buf);
-    }
-
-    ehttpd_mutex_delete(posix_inst->mutex);
     ehttpd_thread_delete(posix_inst->thread);
+    ehttpd_free(&posix_inst->inst);
 }
 
 #if defined(CONFIG_EHTTPD_USE_SHUTDOWN)

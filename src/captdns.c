@@ -105,7 +105,6 @@ struct dns_uri_header_t {
 void ehttpd_captdns_hook(ehttpd_inst_t *inst, ehttpd_captdns_t *captdns,
         int fd);
 
-
 /** This function writes a 16-bit value to an unaligned pointer *p in network
  *  endian and advances the pointer.
  */
@@ -114,7 +113,6 @@ static void write_u16(uint8_t **p, uint16_t n)
     *(*p)++ = (n >> 8) & 0xFF;
     *(*p)++ = n & 0xFF;
 }
-
 
 /** This function writes a 32-bit value to an unaligned pointer *p in network
  *  endian and advances the pointer.
@@ -126,7 +124,6 @@ static void write_u32(uint8_t **p, uint32_t n)
     *(*p)++ = (n >> 8) & 0xFF;
     *(*p)++ = n & 0xFF;
 }
-
 
 /** This function reads a DNS name into string s of max length len. p is
  *  advanced and length is updated with the actual length read. pkt and
@@ -174,7 +171,6 @@ static void read_name(uint8_t **p, char *s, size_t *len, uint8_t *pkt,
     }
 }
 
-
 /** This function writes the dns string as a name to the buffer *p with max
  *  length len. p is advanced, and len is updated with the actual written
  *  size.
@@ -203,19 +199,8 @@ static void write_name(uint8_t **p, char *s, size_t *len)
     *len = (void *) *p - start;
 }
 
-
-ehttpd_captdns_t *ehttpd_captdns_start(ehttpd_inst_t *inst)
-{
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(53);
-    return ehttpd_captdns_start_ex(inst, (struct sockaddr *) &addr);
-}
-
-
-ehttpd_captdns_t *ehttpd_captdns_start_ex(ehttpd_inst_t *inst,
-        struct sockaddr *addr)
+ehttpd_captdns_t *ehttpd_captdns_start(ehttpd_inst_t *inst,
+        const char *addr)
 {
     ehttpd_captdns_t *captdns = malloc(sizeof(ehttpd_captdns_t));
     if (captdns == NULL) {
@@ -228,23 +213,29 @@ ehttpd_captdns_t *ehttpd_captdns_start_ex(ehttpd_inst_t *inst,
         return NULL;
     }
 
-    memcpy(&captdns->addr, addr, sizeof(struct sockaddr_in));
     captdns->addr.sin_family = AF_INET;
+    captdns->addr.sin_port = htons(53);
+    if (addr == NULL) {
+        addr = "0.0.0.0:53";
+    }
 
-    char buf[16];
-    inet_ntop(AF_INET, &captdns->addr.sin_addr, buf, sizeof(buf));
+    char *s = strdup(addr);
+    char *p = strrchr(s, ':');
+    if (p) {
+        *p = '\0';
+        captdns->addr.sin_port = htons(strtol(p + 1, NULL, 10));
+    }
+    inet_pton(AF_INET, s, &captdns->addr.sin_addr);
+    free(s);
 
     if (bind(captdns->fd, (struct sockaddr *) &captdns->addr,
             sizeof(captdns->addr)) < 0) {
-        EHTTPD_LOGE(__func__, "unable to bind to UDP %s:%d", buf,
-                ntohs(captdns->addr.sin_port));
+        EHTTPD_LOGE(__func__, "unable to bind to UDP %s", addr);
         close(captdns->fd);
         free(captdns);
         return NULL;
     }
-
-    EHTTPD_LOGI(__func__, "bound to UDP %s:%d", buf,
-            ntohs(captdns->addr.sin_port));
+    EHTTPD_LOGI(__func__, "bound to UDP %s", addr);
 
     ehttpd_captdns_hook(inst, captdns, captdns->fd);
 
@@ -360,7 +351,6 @@ void ehttpd_captdns_recv(ehttpd_captdns_t *captdns)
     sendto(captdns->fd, captdns->buf, po - captdns->buf, 0,
             (struct sockaddr *) &from, sizeof(struct sockaddr_in));
 }
-
 
 void ehttpd_captdns_shutdown(ehttpd_captdns_t *captdns)
 {
