@@ -84,7 +84,7 @@ typedef struct ehttpd_route_t {
     ehttpd_route_handler_t handler; /**< route handler function */
     const char *path; /**< path expression for this route */
     size_t argc; /**< argument count */
-    void *argv[]; /**< argument list */
+    const void *argv[]; /**< argument list */
 } ehttpd_route_t;
 
 /**

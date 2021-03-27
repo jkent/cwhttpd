@@ -554,7 +554,7 @@ static ehttpd_status_t ehttpd_route_not_found(ehttpd_conn_t *conn)
 }
 
 static const ehttpd_route_t route_not_found =
-    {NULL, ehttpd_route_not_found, 0, NULL, ""};
+    {NULL, ehttpd_route_not_found, NULL, 0, NULL};
 
 // Returns a static char *to a mime type for a given url to a file.
 const char *ehttpd_get_mimetype(const char *url)
