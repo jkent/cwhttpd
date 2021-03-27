@@ -157,7 +157,7 @@ static void ehttpd_free(ehttpd_inst_t *inst)
         free(posix_inst->conn_buf);
     }
     while (posix_inst->inst.route_head) {
-        ehttpd_route_remove_head(&posix_inst->inst);
+        ehttpd_route_remove(&posix_inst->inst, 0);
     }
     free(posix_inst);
 }

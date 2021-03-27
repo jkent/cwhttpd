@@ -71,6 +71,7 @@ typedef void (*ehttpd_timer_handler_t)(void *arg);
 enum ehttpd_flags_t {
     EHTTPD_FLAG_NONE                = 0,
     EHTTPD_FLAG_TLS                 = (1 << 0),
+    EHTTPD_FLAG_MANAGED_CONN_BUF    = (1 << 1),
 };
 
 /**
@@ -81,8 +82,8 @@ enum ehttpd_flags_t {
 typedef struct ehttpd_route_t {
     ehttpd_route_t *next; /**< next route entry */
     ehttpd_route_handler_t handler; /**< route handler function */
-    void *arg; /**< first argument */
-    void *arg2; /**< second argument */
+    size_t argc; /**< argument count */
+    void **argv; /**< argument list */
     char path[]; /**< path expression for this route */
 } ehttpd_route_t;
 
@@ -92,8 +93,9 @@ typedef struct ehttpd_route_t {
  * This struct is shared between all connections.
  */
 struct ehttpd_inst_t {
-    ehttpd_route_t *route_head; /* head of route linked list */
-    ehttpd_route_t *route_tail; /* tail of route linked list */
+    ehttpd_route_t *route_head; /** head of route linked list */
+    ehttpd_route_t *route_tail; /** tail of route linked list */
+    size_t num_routes; /** number of routes */
     espfs_fs_t *espfs; /**< \a espfs_fs_t instance */
     void *user; /**< user data */
 };
@@ -120,49 +122,56 @@ size_t ehttpd_get_conn_buf_size(
 );
 
 /**
- * \brief Insert a route at the head of the route list
- *
- * \returns The inserted route
+ * \brief Insert a route at a given index in the route list
  */
-ehttpd_route_t *ehttpd_route_insert_head(
+void ehttpd_route_vinsert(
     ehttpd_inst_t *inst, /** [in] httpd instance */
-    const char *path /** [in] path expression for this route */
+    ssize_t index, /** [in] index of route entry, can be negative */
+    const char *path, /** [in] path expression for this route */
+    ehttpd_route_handler_t handler, /** [in] route handler function */
+    size_t argc, /** argument count */
+    va_list args /** arguments */
 );
 
 /**
- * \brief Append a route to the tail of the route list
- *
- * \returns The inserted route
+ * \brief Insert a route at a given index in the route list
  */
-ehttpd_route_t *ehttpd_route_insert_tail(
+void ehttpd_route_insert(
     ehttpd_inst_t *inst, /** [in] httpd instance */
-    const char *path /** [in] path expression for this route */
+    ssize_t index, /** [in] index of route entry, can be negative */
+    const char *path, /** [in] path expression for this route */
+    ehttpd_route_handler_t handler, /** [in] route handler function */
+    size_t argc, /** argument count */
+    ... /** arguments */
 );
 
 /**
- * \brief Insert a route to the route list after a given route
- *
- * \returns The inserted route
+ * \brief Append a route to the end of the route list
  */
-ehttpd_route_t *ehttpd_route_insert_after(
+void ehttpd_route_append(
     ehttpd_inst_t *inst, /** [in] httpd instance */
-    ehttpd_route_t *after, /** [in] route entry to insert after */
-    const char *path /** [in] path expression for this route */
+    const char *path, /** [in] path expression for this route */
+    ehttpd_route_handler_t handler, /** [in] route handler function */
+    size_t argc, /** argument count */
+    ... /** arguments */
 );
 
 /**
- * \brief Remove a route
+ * \brief Return the route at the given index of the route list
+ *
+ * \returns The route at the given index
+ */
+ehttpd_route_t *ehttpd_route_get(
+    ehttpd_inst_t *inst, /** [in] httpd instance */
+    ssize_t index /** [in] index of route entry, can be negative */
+);
+
+/**
+ * \brief Delete a route at the given index of the route list
  */
 void ehttpd_route_remove(
     ehttpd_inst_t *inst, /** [in] httpd instance */
-    ehttpd_route_t *route /** [in] route entry to remove */
-);
-
-/**
- * \brief Remove a route from head of the route list
- */
-void ehttpd_route_remove_head(
-    ehttpd_inst_t *inst /** [in] httpd instance */
+    ssize_t index /** [in] index of route entry, can be negative */
 );
 
 /**

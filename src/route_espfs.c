@@ -22,15 +22,15 @@ static ehttpd_status_t get_filepath(ehttpd_conn_t *conn, char *path,
 {
     size_t out_len = 0;
     const char *url = conn->url;
-    const char *route = conn->route->path;
-    const char *arg = conn->route->arg;
+    const ehttpd_route_t *route = conn->route;
+    const char *rpath = route->path;
 
-    while (*url && *route == *url) {
-        route++;
+    while (*url && *rpath == *url) {
+        rpath++;
         url++;
     }
 
-    if (arg == NULL) {
+    if (route->argc < 1) {
         out_len = strlcpy(path, url, len);
         if (path[out_len - 1] == '/') {
             if (index == NULL) {
@@ -41,7 +41,7 @@ static ehttpd_status_t get_filepath(ehttpd_conn_t *conn, char *path,
             }
         }
     } else {
-        out_len = strlcpy(path, arg, len);
+        out_len = strlcpy(path, route->argv[0], len);
         if (path[out_len - 1] == '/') {
             out_len += strlcpy(path + out_len, url, len - out_len);
             if (path[out_len - 1] == '/') {
@@ -214,7 +214,7 @@ ehttpd_status_t ehttpd_route_espfs_tpl(ehttpd_conn_t *conn)
         tpd->f = f;
         tpd->user = NULL;
         tpd->token_pos = -1;
-        tpd->cb = conn->route->arg2;
+        tpd->cb = conn->route->argv[1];
 
         ehttpd_start_response(conn, 200);
         if (mimetype) {

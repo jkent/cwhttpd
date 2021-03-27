@@ -22,77 +22,132 @@
 #endif
 
 
-ehttpd_route_t *ehttpd_route_insert_head(ehttpd_inst_t *inst, const char *path)
+void ehttpd_route_vinsert(ehttpd_inst_t *inst, ssize_t index, const char *path,
+        ehttpd_route_handler_t handler, size_t argc, va_list args)
 {
-    ehttpd_route_t *route = calloc(1, sizeof(ehttpd_route_t) + strlen(path));
-    if (route == NULL) {
-        return NULL;
+    ehttpd_route_t *new_route = calloc(1,
+            sizeof(ehttpd_route_t) + strlen(path));
+    if (new_route == NULL) {
+        return;
     }
 
-    if ((route->next = inst->route_head) == NULL) {
-        inst->route_tail = route;
-    }
-    inst->route_head = route;
-
-    strcpy(route->path, path);
-    return route;
-}
-
-ehttpd_route_t *ehttpd_route_insert_tail(ehttpd_inst_t *inst, const char *path)
-{
-    ehttpd_route_t *route = calloc(1, sizeof(ehttpd_route_t) + strlen(path));
-    if (route == NULL) {
-        return NULL;
-    }
-
-    if (inst->route_head == NULL) {
-        inst->route_head = route;
-    } else {
-        inst->route_tail->next = route;
-    }
-    inst->route_tail = route;
-
-    strcpy(route->path, path);
-    return route;
-}
-
-ehttpd_route_t *ehttpd_route_insert_after(ehttpd_inst_t *inst,
-        ehttpd_route_t *after, const char *path)
-{
-    ehttpd_route_t *route = calloc(1, sizeof(ehttpd_route_t) + strlen(path));
-    if (route == NULL) {
-        return NULL;
-    }
-
-    if ((route->next = after->next) == NULL) {
-        inst->route_tail = route;
-    }
-    after->next = route;
-
-    strcpy(route->path, path);
-    return route;
-}
-
-void ehttpd_route_remove(ehttpd_inst_t *inst, ehttpd_route_t *route)
-{
-    if (route == inst->route_head) {
-        ehttpd_route_remove_head(inst);
-    } else {
-        ehttpd_route_t *elm = inst->route_head;
-        while (elm != route) {
-            elm = elm->next;
+    if (index < 0) {
+        index = inst->num_routes + index;
+        if (index >= inst->num_routes) {
+            index = 0;
         }
-        if ((elm->next = elm->next->next) == NULL) {
-            inst->route_tail = elm->next;
+    } else if (index >= inst->num_routes) {
+        index = inst->num_routes;
+    }
+
+    if (inst->num_routes == 0) {
+        inst->route_head = new_route;
+        inst->route_tail = new_route;
+    } else if (index == 0) {
+        new_route->next = inst->route_head;
+        inst->route_head = new_route;
+    } else if (index == inst->num_routes) {
+        inst->route_tail->next = new_route;
+        inst->route_tail = new_route;
+    } else {
+        ehttpd_route_t *route = inst->route_head;
+        for (int i = 0; i < index - 1; i++) {
+            route = route->next;
+        }
+        new_route->next = route->next;
+        route->next = new_route;
+    }
+
+    strcpy(new_route->path, path);
+    new_route->handler = handler;
+    new_route->argc = argc;
+    if (argc == 0) {
+        new_route->argv = NULL;
+    } else {
+        new_route->argv = malloc(sizeof(void *) * argc);
+        for (int i = 0; i < argc; i++) {
+            new_route->argv[i] = va_arg(args, void *);
         }
     }
+    inst->num_routes++;
 }
 
-void ehttpd_route_remove_head(ehttpd_inst_t *inst)
+void ehttpd_route_insert(ehttpd_inst_t *inst, ssize_t index, const char *path,
+        ehttpd_route_handler_t handler, size_t argc, ...)
 {
-    if ((inst->route_head = inst->route_head->next) == NULL) {
-        inst->route_tail = inst->route_head;
+    va_list args;
+
+    va_start(args, argc);
+    ehttpd_route_vinsert(inst, index, path, handler, argc, args);
+    va_end(args);
+}
+
+void ehttpd_route_append(ehttpd_inst_t *inst, const char *path,
+        ehttpd_route_handler_t handler, size_t argc, ...)
+{
+    va_list args;
+
+    va_start(args, argc);
+    ehttpd_route_vinsert(inst, inst->num_routes, path, handler, argc, args);
+    va_end(args);
+}
+
+ehttpd_route_t *ehttpd_route_get(ehttpd_inst_t *inst, ssize_t index)
+{
+    if (inst->num_routes == 0) {
+        return NULL;
+    } else if (index < 0) {
+        index = inst->num_routes + index;
+        if (index >= inst->num_routes) {
+            index = 0;
+        }
+    } else if (index >= inst->num_routes - 1) {
+        index = inst->num_routes - 1;
     }
+
+    ehttpd_route_t *route = inst->route_head;
+    for (int i = 0; i < index - 1; i++) {
+        route = route->next;
+    }
+    return route;
+}
+
+void ehttpd_route_remove(ehttpd_inst_t *inst, ssize_t index)
+{
+    if (inst->num_routes == 0) {
+        return;
+    } else if (index < 0) {
+        index = inst->num_routes + index;
+        if (index >= inst->num_routes) {
+            index = 0;
+        }
+    } else if (index >= inst->num_routes - 1) {
+        index = inst->num_routes - 1;
+    }
+
+    ehttpd_route_t *route = inst->route_head;
+    if (index == 0) {
+        inst->route_head = route->next;
+        if (inst->num_routes == 1) {
+            inst->route_tail = NULL;
+        }
+    } else {
+        for (int i = 0; i < index - 1; i++) {
+            route = route->next;
+        }
+        ehttpd_route_t *temp = route->next;
+        route->next = route->next->next;
+        if (index == inst->num_routes - 1) {
+            inst->route_tail = route;
+        }
+        route = temp;
+    }
+
+    if (route->argc > 0) {
+        free(route->argv);
+    }
+    free(route);
+    inst->num_routes--;
 }
 
 const char *ehttpd_get_header(ehttpd_conn_t *conn, const char *name)
@@ -504,7 +559,7 @@ static ehttpd_status_t ehttpd_route_not_found(ehttpd_conn_t *conn)
 }
 
 static const ehttpd_route_t route_not_found =
-    {NULL, ehttpd_route_not_found, NULL, NULL, "<not found>"};
+    {NULL, ehttpd_route_not_found, 0, NULL, ""};
 
 // Returns a static char *to a mime type for a given url to a file.
 const char *ehttpd_get_mimetype(const char *url)
@@ -700,9 +755,7 @@ static void process_request(ehttpd_conn_t *conn)
             conn->route = &route_not_found;
         }
 
-        printf("handler %s\n", conn->route->path);
         ehttpd_status_t status = conn->route->handler(conn);
-        printf("hander returned %d\n", status);
         if (status == EHTTPD_STATUS_MORE) {
             ehttpd_flush(conn);
             break;

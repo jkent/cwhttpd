@@ -362,7 +362,7 @@ ehttpd_status_t ehttpd_route_websocket(ehttpd_conn_t *conn) {
         //Set data receive handler
         conn->recv_handler = ehttpd_ws_recv;
         //Inform route handler we have a connection
-        ehttpd_ws_connected_cb_t connCb = conn->route->arg;
+        ehttpd_ws_connected_cb_t connCb = conn->route->argv[0];
         connCb(ws);
         //Insert ws into linked list
         if (ws_head == NULL) {

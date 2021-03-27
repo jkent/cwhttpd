@@ -43,7 +43,7 @@ ehttpd_status_t ehttpd_route_auth_basic(ehttpd_conn_t *conn)
             userpass[len] = '\0'; // zero-terminate user:pass string
 
             ehttpd_auth_account_cb_t get_account =
-                    (ehttpd_auth_account_cb_t) conn->route->arg;
+                    (ehttpd_auth_account_cb_t) conn->route->argv[0];
             int i = 0;
             while (get_account(conn, i, user, AUTH_MAX_USER_LEN, pass,
                     AUTH_MAX_PASS_LEN)) {

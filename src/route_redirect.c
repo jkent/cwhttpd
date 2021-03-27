@@ -22,13 +22,13 @@ ehttpd_status_t ehttpd_route_redirect(ehttpd_conn_t *conn)
         return EHTTPD_STATUS_DONE;
     }
 
-    ehttpd_redirect(conn, (char *) conn->route->arg);
+    ehttpd_redirect(conn, (char *) conn->route->argv[0]);
     return EHTTPD_STATUS_DONE;
 }
 
 ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
 {
-    const char *new_hostname = (char *) conn->route->arg;
+    const char *new_hostname = (char *) conn->route->argv[0];
     char *buf;
 
     if (conn->closed) {
