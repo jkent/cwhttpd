@@ -26,7 +26,7 @@ void ehttpd_route_vinsert(ehttpd_inst_t *inst, ssize_t index, const char *path,
         ehttpd_route_handler_t handler, size_t argc, va_list args)
 {
     ehttpd_route_t *new_route = calloc(1,
-            sizeof(ehttpd_route_t) + strlen(path));
+            sizeof(ehttpd_route_t) + (sizeof(void *) * argc));
     if (new_route == NULL) {
         return;
     }
@@ -58,16 +58,11 @@ void ehttpd_route_vinsert(ehttpd_inst_t *inst, ssize_t index, const char *path,
         route->next = new_route;
     }
 
-    strcpy(new_route->path, path);
+    new_route->path = path;
     new_route->handler = handler;
     new_route->argc = argc;
-    if (argc == 0) {
-        new_route->argv = NULL;
-    } else {
-        new_route->argv = malloc(sizeof(void *) * argc);
-        for (int i = 0; i < argc; i++) {
-            new_route->argv[i] = va_arg(args, void *);
-        }
+    for (int i = 0; i < argc; i++) {
+        new_route->argv[i] = va_arg(args, void *);
     }
     inst->num_routes++;
 }
