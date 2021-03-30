@@ -8,5 +8,6 @@ Portable Layer
 
    delay
    mutex
+   semaphore
    thread
    timer

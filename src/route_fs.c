@@ -23,6 +23,15 @@ Route handlers to let httpd use the filesystem to serve the files in it.
 #endif
 
 
+#define TRY(X) ({ \
+    ssize_t n = X; \
+    if (n < 0) { \
+        r = EHTTPD_STATUS_FAIL; \
+        goto cleanup; \
+    } \
+    n; \
+})
+
 #define FILE_CHUNK_LEN    (1024)
 #define MAX_FILENAME_LENGTH (256)
 
@@ -33,7 +42,7 @@ static bool get_filepath(ehttpd_conn_t *conn, char *path, size_t len,
         struct stat *st, const char *index)
 {
     size_t out_len = 0;
-    const char *url = conn->url;
+    const char *url = conn->request.url;
     const ehttpd_route_t *route = conn->route;
     const char *rpath = route->path;
 
@@ -78,236 +87,198 @@ static bool get_filepath(ehttpd_conn_t *conn, char *path, size_t len,
 
 ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
 {
-    FILE *f = conn->user;
-    char buf[FILE_CHUNK_LEN];
+    ehttpd_status_t r = EHTTPD_STATUS_DONE;
 
-    if (conn->closed) {
-        if (f != NULL){
-            fclose(f);
+    /* Only process GET requests, otherwise fallthrough */
+    if (conn->request.method != EHTTPD_METHOD_GET) {
+        return EHTTPD_STATUS_NOTFOUND;
+    }
+
+    /* We can use buf here because its not needed until reading data */
+    char buf[FILE_CHUNK_LEN];
+    struct stat st;
+    if (!get_filepath(conn, buf, sizeof(buf), &st, "index.html")) {
+        printf("not found\n");
+        return EHTTPD_STATUS_NOTFOUND;
+    }
+
+    bool gzip_encoding = false;
+#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+    /* Legacy ESPFS */
+    if (st.st_spare4[0] == 0x73665345) {
+        if (st.st_spare4[0] & 2) {
+            gzip_encoding = true;
         }
-        EHTTPD_LOGE(__func__, "Connection aborted!");
-        return EHTTPD_STATUS_DONE;
+    }
+
+    /* ESPFS v2 */
+    if (st.st_spare4[0] == 0x2B534645) {
+        if (st.st_spare4[0] & 1) {
+            gzip_encoding = true;
+        }
+    }
+#endif
+
+    const char *mimetype = ehttpd_get_mimetype(buf);
+
+    FILE *f = fopen(buf, "r");
+    if (f == NULL) {
+        /* file not found, look for filename.gz */
+        strlcat(buf, ".gz", sizeof(buf));
+        f = fopen(buf, "r");
+        gzip_encoding = true;
     }
 
     if (f == NULL) {
-        /* First call to this route handler */
-
-        /* Only process GET requests, otherwise fallthrough */
-        if (conn->method != EHTTPD_METHOD_GET) {
-            return EHTTPD_STATUS_NOTFOUND;
-        }
-
-        /* We can use buf here because its not needed until reading data */
-        struct stat st;
-        if (!get_filepath(conn, buf, sizeof(buf), &st, "index.html")) {
-            return EHTTPD_STATUS_NOTFOUND;
-        }
-
-        bool gzip_encoding = false;
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
-        if (st.st_spare4[0] == 0x73665345) {
-            if (st.st_spare4[0] & 2) {
-                gzip_encoding = true;
-            }
-        }
-
-        if (st.st_spare4[0] == 0x2B534645) {
-            if (st.st_spare4[0] & 1) {
-                gzip_encoding = true;
-            }
-        }
-#endif
-
-        const char *mimetype = ehttpd_get_mimetype(buf);
-
-        f = fopen(buf, "r");
-        if (f == NULL) {
-            /* file not found, look for filename.gz */
-            strlcat(buf, ".gz", sizeof(buf));
-            f = fopen(buf, "r");
-            gzip_encoding = true;
-        }
-
-        if (f == NULL) {
-            return EHTTPD_STATUS_NOTFOUND;
-        }
-
-        if (gzip_encoding) {
-            /* Check the request Accept-Encoding header for gzip. Return a 500
-             * response if not present. */
-            const char *header = ehttpd_get_header(conn, "Accept-Encoding");
-            if (header && strstr(header, "gzip") == NULL) {
-                EHTTPD_LOGE(__func__, "client does not accept gzip!");
-                fclose(f);
-                ehttpd_start_response(conn, 500);
-                ehttpd_end_headers(conn);
-                return EHTTPD_STATUS_DONE;
-            }
-        }
-
-        conn->user = f;
-        ehttpd_start_response(conn, 200);
-        if (gzip_encoding) {
-            ehttpd_header(conn, "Content-Encoding", "gzip");
-        }
-        if (mimetype) {
-            ehttpd_header(conn, "Content-Type", mimetype);
-        }
-        ehttpd_add_cache_header(conn, mimetype);
-        ehttpd_end_headers(conn);
+        return EHTTPD_STATUS_NOTFOUND;
     }
 
-    size_t len = fread(buf, 1, FILE_CHUNK_LEN, f);
-    if (len > 0) {
-        ehttpd_enqueue(conn, buf, len);
+    if (gzip_encoding) {
+        /* Check the request Accept-Encoding header for gzip. Return a 500
+         * response if not present. */
+        const char *header = ehttpd_get_header(conn, "Accept-Encoding");
+        if (header && strstr(header, "gzip") == NULL) {
+            EHTTPD_LOGE(__func__, "client does not accept gzip!");
+            fclose(f);
+            TRY(ehttpd_response(conn, 500));
+            return EHTTPD_STATUS_DONE;
+        }
     }
 
-    if (len == FILE_CHUNK_LEN) {
-        return EHTTPD_STATUS_MORE;
+    TRY(ehttpd_response(conn, 200));
+    if (gzip_encoding) {
+        TRY(ehttpd_send_header(conn, "Content-Encoding", "gzip"));
     }
+    if (mimetype) {
+        TRY(ehttpd_send_header(conn, "Content-Type", mimetype));
+    }
+    TRY(ehttpd_send_cache_header(conn, mimetype));
 
+    size_t len;
+    TRY(ehttpd_chunk_start(conn, st.st_size));
+    while ((len = fread(buf, 1, FILE_CHUNK_LEN, f)) > 0) {
+        TRY(ehttpd_send(conn, buf, len));
+    }
+    TRY(ehttpd_chunk_end(conn));
+
+cleanup:
     fclose(f);
-    return EHTTPD_STATUS_DONE;
+    return r;
 }
-
-typedef struct {
-    FILE *f;
-    void *user;
-    char token[32];
-    int token_pos;
-    ehttpd_tpl_cb_t cb;
-} template_data_t;
 
 ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
 {
-    template_data_t *tpd = conn->user;
-    FILE *f;
-    char buf[FILE_CHUNK_LEN];
+    ehttpd_status_t r = EHTTPD_STATUS_DONE;
 
-    if (conn->closed) {
-        tpd->cb(conn, NULL, &tpd->user);
-        if(tpd->f != NULL){
-            fclose(tpd->f);
-        }
-        free(tpd);
-        return EHTTPD_STATUS_DONE;
+    /* Only process GET requests, otherwise fallthrough */
+    if (conn->request.method != EHTTPD_METHOD_GET) {
+        return EHTTPD_STATUS_NOTFOUND;
     }
 
-    if (tpd == NULL) {
-        /* First call to this route handler */
-        /* We can use buf here because its not needed until reading data */
-        struct stat st;
-        if (!get_filepath(conn, buf, sizeof(buf), &st, "index.tpl")) {
-            return EHTTPD_STATUS_NOTFOUND;
-        }
-
-        bool gzip_encoding = false;
+    /* We can use buf here because its not needed until reading data */
+    char buf[FILE_CHUNK_LEN];
+    struct stat st;
+    if (!get_filepath(conn, buf, sizeof(buf), &st, "index.tpl")) {
+        return EHTTPD_STATUS_NOTFOUND;
+    }
 
 #if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
-        if (st.st_spare4[0] == 0x73665345) {
-            if (st.st_spare4[0] & 2) {
-                gzip_encoding = true;
-            }
-        }
+    bool gzip_encoding = false;
 
-        if (st.st_spare4[0] == 0x2B534645) {
-            if (st.st_spare4[0] & 1) {
-                gzip_encoding = true;
-            }
+    /* Legacy ESPFS */
+    if (st.st_spare4[0] == 0x73665345) {
+        if (st.st_spare4[0] & 2) {
+            gzip_encoding = true;
         }
+    }
+
+    /* ESPFS v2 */
+    if (st.st_spare4[0] == 0x2B534645) {
+        if (st.st_spare4[0] & 1) {
+            gzip_encoding = true;
+        }
+    }
+
+    if (gzip_encoding) {
+        EHTTPD_LOGE(__func__, "template has gzip encoding");
+        return EHTTPD_STATUS_NOTFOUND;
+    }
 #endif
 
-        if (gzip_encoding) {
-            EHTTPD_LOGE(__func__, "template has gzip encoding");
-            return EHTTPD_STATUS_NOTFOUND;
-        }
+    const char *mimetype = ehttpd_get_mimetype(buf);
 
-        const char *mimetype = ehttpd_get_mimetype(buf);
-
-        f = fopen(buf, "r");
-        if (f == NULL) {
-            return EHTTPD_STATUS_NOTFOUND;
-        }
-
-        tpd = (template_data_t *) malloc(sizeof(template_data_t));
-        if (tpd == NULL) {
-            EHTTPD_LOGE(__func__, "malloc fail");
-            return EHTTPD_STATUS_NOTFOUND;
-        }
-        conn->user = tpd;
-        tpd->f = f;
-        tpd->user = NULL;
-        tpd->token_pos = -1;
-        tpd->cb = conn->route->argv[1];
-
-        ehttpd_start_response(conn, 200);
-        if (mimetype) {
-            ehttpd_header(conn, "Content-Type", mimetype);
-        }
-        ehttpd_add_cache_header(conn, mimetype);
-        ehttpd_end_headers(conn);
+    FILE *f = fopen(buf, "r");
+    if (f == NULL) {
+        return EHTTPD_STATUS_NOTFOUND;
     }
 
-    tpd->cb(conn, NULL, &tpd->user);
+    ehttpd_tpl_cb_t cb = conn->route->argv[1];
+    TRY(ehttpd_response(conn, 200));
+    if (mimetype) {
+        TRY(ehttpd_send_header(conn, "Content-Type", mimetype));
+    }
 
-    size_t len = fread(buf, 1, FILE_CHUNK_LEN, tpd->f);
-    int raw_count = 0;
-    uint8_t *p = (uint8_t *) buf;
-    if (len > 0) {
-        for (size_t i = 0; i < len; i++) {
-            if (tpd->token_pos < 0) {
-                /* we're in ordinary text */
-                if (buf[i] == '%') {
-                    /* send collected raw data */
-                    if (raw_count != 0) {
-                        ehttpd_enqueue(conn, p, raw_count);
-                        raw_count = 0;
-                    }
-                    /* start collecting token chars */
-                    tpd->token_pos = 0;
-                } else {
-                    raw_count++;
-                }
-            } else {
-                /* we're in token text */
-                if (buf[i] == '%') {
-                    if (tpd->token_pos == 0) {
-                        /* this is an escape sequence */
-                        ehttpd_enqueue(conn, "%", 1);
+    void *user = NULL;
+    size_t len;
+    int token_pos = -1;
+    char token[32];
+    do {
+        len = fread(buf, 1, FILE_CHUNK_LEN, f);
+        int raw_count = 0;
+        uint8_t *p = (uint8_t *) buf;
+        if (len > 0) {
+            for (size_t i = 0; i < len; i++) {
+                if (token_pos < 0) {
+                    /* we're in ordinary text */
+                    if (buf[i] == '%') {
+                        /* send collected raw data */
+                        if (raw_count != 0) {
+                            TRY(ehttpd_send(conn, p, raw_count));
+                            raw_count = 0;
+                        }
+                        /* start collecting token chars */
+                        token_pos = 0;
                     } else {
-                        /* this is a token */
-                        tpd->token[tpd->token_pos] = '\0'; /* zero terminate */
-                        tpd->cb(conn, tpd->token, &tpd->user);
+                        raw_count++;
                     }
-
-                    /* collect normal characters again */
-                    p = (uint8_t *) &buf[i + 1];
-                    tpd->token_pos = -1;
                 } else {
-                    if (tpd->token_pos < (sizeof(tpd->token) - 1)) {
-                        tpd->token[tpd->token_pos++] = buf[i];
+                    /* we're in token text */
+                    if (buf[i] == '%') {
+                        if (token_pos == 0) {
+                            /* this is an escape sequence */
+                            TRY(ehttpd_send(conn, "%", 1));
+                        } else {
+                            /* this is a token */
+                            token[token_pos] = '\0'; /* zero terminate */
+                            cb(conn, token, &user);
+                        }
+
+                        /* collect normal characters again */
+                        p = (uint8_t *) &buf[i + 1];
+                        token_pos = -1;
+                    } else {
+                        if (token_pos < (sizeof(token) - 1)) {
+                            token[token_pos++] = buf[i];
+                        }
                     }
                 }
             }
         }
-    }
 
-    /* send remainder */
-    if (raw_count != 0) {
-        ehttpd_enqueue(conn, p, raw_count);
-    }
+        /* send remainder */
+        if (raw_count != 0) {
+            TRY(ehttpd_send(conn, p, raw_count));
+        }
+    } while (len == FILE_CHUNK_LEN);
 
-    if (len == FILE_CHUNK_LEN) {
-        return EHTTPD_STATUS_MORE;
-    }
-
+cleanup:
     /* we're done */
-    tpd->cb(conn, NULL, &tpd->user);
-    fclose(tpd->f);
-    free(tpd);
-    return EHTTPD_STATUS_DONE;
+    cb(conn, NULL, &user);
+    fclose(f);
+    return r;
 }
 
+#if 0
 static int create_missing_directories(const char *fullpath)
 {
     /* make a copy for modifications */
@@ -471,13 +442,13 @@ err:
             data->b_written, data->state == UPSTATE_DONE);
     free(data);
 
-    ehttpd_start_response(conn, 200);
-    ehttpd_header(conn, "Cache-Control",
+    ehttpd_response(conn, 200);
+    ehttpd_send_header(conn, "Cache-Control",
             "no-store, must-revalidate, no-cache, max-age=0");
-    ehttpd_header(conn, "Content-Type", "application/json; charset=utf-8");
-    ehttpd_end_headers(conn);
+    ehttpd_send_header(conn, "Content-Type", "application/json; charset=utf-8");
     ehttpd_enqueue(conn, json, -1);
     free(json);
 
     return EHTTPD_STATUS_DONE;
 }
+#endif

@@ -18,3 +18,4 @@ Type Definitions
 ^^^^^^^^^^^^^^^^
 
 .. doxygentypedef:: ehttpd_thread_func_t
+.. doxygentypedef:: ehttpd_thread_t

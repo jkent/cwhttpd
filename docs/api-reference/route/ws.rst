@@ -1,4 +1,4 @@
-Websocket
+WebSocket
 =========
 
 `libesphttpd/route.h`
@@ -6,9 +6,4 @@ Websocket
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_route_websocket
-
-Macros
-^^^^^^
-
-.. doxygendefine:: EHTTPD_ROUTE_WS
+.. doxygenfunction:: ehttpd_route_ws

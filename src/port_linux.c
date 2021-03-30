@@ -7,6 +7,7 @@
 #include "libesphttpd/port.h"
 
 #include <pthread.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -66,6 +67,55 @@ void ehttpd_mutex_delete(ehttpd_mutex_t *mutex)
 {
     pthread_mutex_destroy(&mutex->handle);
     free(mutex);
+}
+
+ehttpd_semaphore_t *ehttpd_semaphore_create(uint32_t max, uint32_t initial)
+{
+    sem_t *semaphore = malloc(sizeof(sem_t));
+    if (semaphore == NULL) {
+        return NULL;
+    }
+
+    if (sem_init(semaphore, 0, initial)) {
+        free(semaphore);
+        return NULL;
+    }
+
+    return (ehttpd_semaphore_t *) semaphore;
+}
+
+bool ehttpd_semaphore_take(ehttpd_semaphore_t *semaphore, uint32_t timeout_ms)
+{
+    if (timeout_ms == 0) {
+        return sem_trywait((sem_t *) semaphore) == 0;
+    } else if (timeout_ms == UINT32_MAX) {
+        return sem_wait((sem_t *) semaphore) == 0;
+    } else {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
+            return false;
+        }
+        ts.tv_sec += timeout_ms / 1000;
+        ts.tv_nsec += (timeout_ms % 1000) * 1000000;
+        ts.tv_sec += ts.tv_nsec / 1000000000;
+        ts.tv_nsec %= 1000000000;
+        return sem_timedwait((sem_t *) semaphore, &ts) == 0;
+    }
+}
+
+bool ehttpd_semaphore_give(ehttpd_semaphore_t *semaphore)
+{
+    int num;
+    sem_getvalue((sem_t *) semaphore, &num);
+    if (num == 1) {
+        return false;
+    }
+    return sem_post((sem_t *) semaphore) == 0;
+}
+
+void ehttpd_semaphore_delete(ehttpd_semaphore_t *semaphore)
+{
+    sem_destroy((sem_t *) semaphore);
 }
 
 struct ehttpd_thread_t {

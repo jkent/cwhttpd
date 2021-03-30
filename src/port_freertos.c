@@ -10,6 +10,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <freertos/timers.h>
+#include <freertos/queue.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -107,6 +108,27 @@ void ehttpd_mutex_delete(ehttpd_mutex_t *mutex)
     free(mutex);
 }
 
+ehttpd_semaphore_t *ehttpd_semaphore_create(uint32_t max, uint32_t initial)
+{
+    return (ehttpd_semaphore_t *) xSemaphoreCreateCounting(max, initial);
+}
+
+bool ehttpd_semaphore_take(ehttpd_semaphore_t *semaphore, uint32_t timeout_ms)
+{
+    return xSemaphoreTake((SemaphoreHandle_t) semaphore,
+            pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+}
+
+bool ehttpd_semaphore_give(ehttpd_semaphore_t *semaphore)
+{
+    return xSemaphoreGive((SemaphoreHandle_t) semaphore) == pdTRUE;
+}
+
+void ehttpd_semaphore_delete(ehttpd_semaphore_t *semaphore)
+{
+    vSemaphoreDelete((SemaphoreHandle_t) semaphore);
+}
+
 struct ehttpd_thread_t {
     xTaskHandle handle;
     ehttpd_thread_func_t fn;
@@ -139,13 +161,13 @@ ehttpd_thread_t *ehttpd_thread_create(ehttpd_thread_func_t fn,
     thread->arg = arg;
 
     if (attr == NULL) {
-        xTaskCreatePinnedToCore(thread_handler, "esphttpd",
-                CONFIG_EHTTPD_DEFAULT_STACK_SIZE, thread,
-                CONFIG_EHTTPD_DEFAULT_PRIORITY, &thread->handle,
-                CONFIG_EHTTPD_DEFAULT_AFFINITY);
+        xTaskCreatePinnedToCore(thread_handler, "ehttpd", 2048, thread,
+                tskIDLE_PRIORITY, &thread->handle, tskNO_AFFINITY);
     } else {
-        xTaskCreatePinnedToCore(thread_handler, "esphttpd", attr->stack_size,
-                thread, attr->priority, &thread->handle, attr->affinity);
+        int32_t affinity =
+                (attr->affinity == -1) ? tskNO_AFFINITY : attr->affinity;
+        xTaskCreatePinnedToCore(thread_handler, attr->name, attr->stack_size,
+                thread, attr->priority, &thread->handle, affinity);
     }
 
     return thread;

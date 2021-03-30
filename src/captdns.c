@@ -12,6 +12,7 @@
 #include "log.h"
 #include "libesphttpd/captdns.h"
 #include "libesphttpd/httpd.h"
+#include "libesphttpd/port.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -33,6 +34,8 @@
 #define DNS_LEN 512
 
 struct ehttpd_captdns_t {
+    ehttpd_thread_t *thread;
+    ehttpd_semaphore_t *shutdown;
     ehttpd_inst_t* inst;
     struct sockaddr_in addr;
     int fd;
@@ -199,18 +202,144 @@ static void write_name(uint8_t **p, char *s, size_t *len)
     *len = (void *) *p - start;
 }
 
-ehttpd_captdns_t *ehttpd_captdns_start(ehttpd_inst_t *inst,
-        const char *addr)
+void ehttpd_captdns_thread(void *arg)
 {
-    ehttpd_captdns_t *captdns = malloc(sizeof(ehttpd_captdns_t));
+    ehttpd_captdns_t *captdns = arg;
+
+    while (!captdns->shutdown) {
+        fd_set read_set;
+        struct timeval timeout = {
+            .tv_usec = 250000,
+        };
+        FD_ZERO(&read_set);
+        FD_SET(captdns->fd, &read_set);
+        if (select(captdns->fd + 1, &read_set, NULL, NULL,
+                &timeout) <= 0) {
+            continue;
+        }
+
+        struct sockaddr_in from;
+        int len = sizeof(from);
+        int msglen = recvfrom(captdns->fd, captdns->buf, sizeof(captdns->buf), 0,
+                (struct sockaddr *) &from, (socklen_t *) &len);
+
+        if (msglen <= 0) {
+            return;
+        }
+
+        uint8_t *pi = captdns->buf;
+        uint8_t *po = &captdns->buf[msglen];
+        dns_header_t *hdr = (dns_header_t *) pi;
+        pi += sizeof(dns_header_t);
+
+        if (msglen > DNS_LEN || msglen < sizeof(dns_header_t)) {
+            EHTTPD_LOGD(__func__, "invalid packet length");
+            return;
+        }
+
+        if (hdr->ancount || hdr->nscount) {
+            EHTTPD_LOGD(__func__, "ignoring reply");
+            return;
+        }
+
+        if (hdr->flags & FLAG_TC) {
+            EHTTPD_LOGD(__func__, "message truncated");
+            return;
+        }
+
+        hdr->flags |= FLAG_QR; /* mark header as a response */
+
+        for (int i = 0; i < ntohs(hdr->qdcount); i++) {
+            size_t name_ptr = pi - captdns->buf;
+            read_name(&pi, NULL, NULL, captdns->buf, msglen);
+            dns_question_footer_t *qf = (dns_question_footer_t *) pi;
+            pi += sizeof(dns_question_footer_t);
+
+            if (ntohs(qf->type) == QTYPE_A) {
+                write_u16(&po, 0xC000 | name_ptr);
+                write_u16(&po, QTYPE_A); /* type */
+                write_u16(&po, QCLASS_IN); /* class */
+                write_u32(&po, 0); /* ttl */
+                write_u16(&po, 4); /* rdlength, IPv4 is 4 bytes */
+                uint32_t ip = captdns->addr.sin_addr.s_addr;
+                if (ip == 0) {
+    #if defined(CONFIG_IDF_TARGET_ESP8266)
+                    /* Detect which tcpip_if this came in on, and return its ip */
+                    tcpip_adapter_ip_info_t ip_info;
+                    ip = from.sin_addr.s_addr;
+                    for (tcpip_adapter_if_t tcpip_if = 0; tcpip_if < TCPIP_ADAPTER_IF_MAX; tcpip_if++) {
+                        tcpip_adapter_get_ip_info(tcpip_if, &ip_info);
+                        if ((ip & ip_info.netmask.addr) == (ip_info.ip.addr & ip_info.netmask.addr)) {
+                            ip = ip_info.ip.addr;
+                            break;
+                        }
+                    }
+    #elif defined(ESP_PLATFORM)
+                    /* Detect which netif this came in on, and return its ip */
+                    esp_netif_ip_info_t ip_info;
+                    esp_netif_t *netif = NULL;
+                    ip = from.sin_addr.s_addr;
+                    while ((netif = esp_netif_next(netif)) != NULL) {
+                        esp_netif_get_ip_info(netif, &ip_info);
+                        if ((ip & ip_info.netmask.addr) == (ip_info.ip.addr & ip_info.netmask.addr)) {
+                            ip = ip_info.ip.addr;
+                            break;
+                        }
+                    }
+    #else
+                    /* Apply netmask of 255.255.255.0 and set last octet to 1 */
+                    ip = from.sin_addr.s_addr & 0x00FFFFFF | 0x01000000;
+    #endif
+                }
+                memcpy(po, &ip, 4);
+                po += 4;
+                hdr->ancount = htons(ntohs(hdr->ancount) + 1);
+
+            } else if (ntohs(qf->type) == QTYPE_NS) {
+                write_u16(&po, 0xC000 | name_ptr);
+                write_u16(&po, QTYPE_NS); /* type */
+                write_u16(&po, QCLASS_IN); /* class */
+                write_u32(&po, 0); /* ttl */
+                size_t len = 4;
+                write_u16(&po, len); /* rdlength */
+                write_name(&po, "ns", &len);
+                hdr->ancount = htons(ntohs(hdr->ancount) + 1);
+
+            } else if (ntohs(qf->type) == QTYPE_URI) {
+                write_u16(&po, 0xC000 | name_ptr);
+                write_u16(&po, QTYPE_URI); /* type */
+                write_u16(&po, QCLASS_URI); /* class */
+                write_u32(&po, 0); /* ttl */
+                size_t len = 16;
+                write_u16(&po, 4 + len); /* rdlength */
+                write_u16(&po, 10); /* prio */
+                write_u16(&po, 1); /* weight */
+                memcpy(po, "http://esp.nonet", len);
+                po += len;
+                hdr->ancount = htons(ntohs(hdr->ancount) + 1);
+            }
+        }
+
+        /* Send the response */
+        sendto(captdns->fd, captdns->buf, po - captdns->buf, 0,
+                (struct sockaddr *) &from, sizeof(struct sockaddr_in));
+    }
+
+    ehttpd_semaphore_give(captdns->shutdown);
+    ehttpd_thread_delete(captdns->thread);
+}
+
+ehttpd_captdns_t *ehttpd_captdns_start(const char *addr)
+{
+    ehttpd_captdns_t *captdns = calloc(1, sizeof(ehttpd_captdns_t));
     if (captdns == NULL) {
+        EHTTPD_LOGE(__func__, "calloc");
         return NULL;
     }
 
     if ((captdns->fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         EHTTPD_LOGE(__func__, "failed to create sock");
-        free(captdns);
-        return NULL;
+        goto err;
     }
 
     captdns->addr.sin_family = AF_INET;
@@ -231,140 +360,32 @@ ehttpd_captdns_t *ehttpd_captdns_start(ehttpd_inst_t *inst,
     if (bind(captdns->fd, (struct sockaddr *) &captdns->addr,
             sizeof(captdns->addr)) < 0) {
         EHTTPD_LOGE(__func__, "unable to bind to UDP %s", addr);
-        close(captdns->fd);
-        free(captdns);
+        goto err;
         return NULL;
     }
     EHTTPD_LOGI(__func__, "bound to UDP %s", addr);
 
-    ehttpd_captdns_hook(inst, captdns, captdns->fd);
+    captdns->thread = ehttpd_thread_create(ehttpd_captdns_thread, captdns,
+            NULL);
+    if (captdns->thread == NULL) {
+        EHTTPD_LOGE(__func__, "thread");
+        goto err;
+    }
 
     return captdns;
-}
 
-
-void ehttpd_captdns_recv(ehttpd_captdns_t *captdns)
-{
-    struct sockaddr_in from;
-    int len = sizeof(from);
-    int msglen = recvfrom(captdns->fd, captdns->buf, sizeof(captdns->buf), 0,
-            (struct sockaddr *) &from, (socklen_t *) &len);
-
-    if (msglen <= 0) {
-        return;
+err:
+    if (captdns->fd >= 0) {
+        close(captdns->fd);
     }
-
-    uint8_t *pi = captdns->buf;
-    uint8_t *po = &captdns->buf[msglen];
-    dns_header_t *hdr = (dns_header_t *) pi;
-    pi += sizeof(dns_header_t);
-
-    if (msglen > DNS_LEN || msglen < sizeof(dns_header_t)) {
-        EHTTPD_LOGD(__func__, "invalid packet length");
-        return;
-    }
-
-    if (hdr->ancount || hdr->nscount) {
-        EHTTPD_LOGD(__func__, "ignoring reply");
-        return;
-    }
-
-    if (hdr->flags & FLAG_TC) {
-        EHTTPD_LOGD(__func__, "message truncated");
-        return;
-    }
-
-    hdr->flags |= FLAG_QR; /* mark header as a response */
-
-    for (int i = 0; i < ntohs(hdr->qdcount); i++) {
-        size_t name_ptr = pi - captdns->buf;
-        read_name(&pi, NULL, NULL, captdns->buf, msglen);
-        dns_question_footer_t *qf = (dns_question_footer_t *) pi;
-        pi += sizeof(dns_question_footer_t);
-
-        if (ntohs(qf->type) == QTYPE_A) {
-            write_u16(&po, 0xC000 | name_ptr);
-            write_u16(&po, QTYPE_A); /* type */
-            write_u16(&po, QCLASS_IN); /* class */
-            write_u32(&po, 0); /* ttl */
-            write_u16(&po, 4); /* rdlength, IPv4 is 4 bytes */
-            uint32_t ip = captdns->addr.sin_addr.s_addr;
-            if (ip == 0) {
-#if defined(CONFIG_IDF_TARGET_ESP8266)
-                /* Detect which tcpip_if this came in on, and return its ip */
-                tcpip_adapter_ip_info_t ip_info;
-                ip = from.sin_addr.s_addr;
-                for (tcpip_adapter_if_t tcpip_if = 0; tcpip_if < TCPIP_ADAPTER_IF_MAX; tcpip_if++) {
-                    tcpip_adapter_get_ip_info(tcpip_if, &ip_info);
-                    if ((ip & ip_info.netmask.addr) == (ip_info.ip.addr & ip_info.netmask.addr)) {
-                        ip = ip_info.ip.addr;
-                        break;
-                    }
-                }
-#elif defined(ESP_PLATFORM)
-                /* Detect which netif this came in on, and return its ip */
-                esp_netif_ip_info_t ip_info;
-                esp_netif_t *netif = NULL;
-                ip = from.sin_addr.s_addr;
-                while ((netif = esp_netif_next(netif)) != NULL) {
-                    esp_netif_get_ip_info(netif, &ip_info);
-                    if ((ip & ip_info.netmask.addr) == (ip_info.ip.addr & ip_info.netmask.addr)) {
-                        ip = ip_info.ip.addr;
-                        break;
-                    }
-                }
-#else
-                /* Apply netmask of 255.255.255.0 and set last octet to 1 */
-                ip = from.sin_addr.s_addr & 0x00FFFFFF | 0x01000000;
-#endif
-            }
-            memcpy(po, &ip, 4);
-            po += 4;
-            hdr->ancount = htons(ntohs(hdr->ancount) + 1);
-
-        } else if (ntohs(qf->type) == QTYPE_NS) {
-            write_u16(&po, 0xC000 | name_ptr);
-            write_u16(&po, QTYPE_NS); /* type */
-            write_u16(&po, QCLASS_IN); /* class */
-            write_u32(&po, 0); /* ttl */
-            size_t len = 4;
-            write_u16(&po, len); /* rdlength */
-            write_name(&po, "ns", &len);
-            hdr->ancount = htons(ntohs(hdr->ancount) + 1);
-
-        } else if (ntohs(qf->type) == QTYPE_URI) {
-            write_u16(&po, 0xC000 | name_ptr);
-            write_u16(&po, QTYPE_URI); /* type */
-            write_u16(&po, QCLASS_URI); /* class */
-            write_u32(&po, 0); /* ttl */
-            size_t len = 16;
-            write_u16(&po, 4 + len); /* rdlength */
-            write_u16(&po, 10); /* prio */
-            write_u16(&po, 1); /* weight */
-            memcpy(po, "http://esp.nonet", len);
-            po += len;
-            hdr->ancount = htons(ntohs(hdr->ancount) + 1);
-        }
-    }
-
-    /* Send the response */
-    sendto(captdns->fd, captdns->buf, po - captdns->buf, 0,
-            (struct sockaddr *) &from, sizeof(struct sockaddr_in));
+    free(captdns);
+    return NULL;
 }
 
 void ehttpd_captdns_shutdown(ehttpd_captdns_t *captdns)
 {
-    if (captdns == NULL) {
-        return;
-    }
-
-    ehttpd_inst_t *inst = captdns->inst;
-
-    ehttpd_lock(inst);
-
-    ehttpd_captdns_hook(inst, captdns, -1);
-    close(captdns->fd);
+    captdns->shutdown = ehttpd_semaphore_create(1, 0);
+    ehttpd_semaphore_take(captdns->shutdown, UINT32_MAX);
+    ehttpd_semaphore_delete(captdns->shutdown);
     free(captdns);
-
-    ehttpd_unlock(inst);
 }

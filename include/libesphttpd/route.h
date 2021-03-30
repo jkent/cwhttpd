@@ -15,95 +15,6 @@ extern "C" {
 #endif
 
 
-/*************************
- * \section Route macros
- *************************/
-
-/**
- * \brief Route with a handler and two arguments
- */
-#define EHTTPD_ROUTE_ARG2(route, handler, arg, arg2) \
-    {(route), (handler), (void *) (arg), (void *) (arg2)}
-
-/**
- * \brief Route with a handler and one argument
- */
-#define EHTTPD_ROUTE_ARG(route, handler, arg) \
-    EHTTPD_ROUTE_ARG2((route), (handler), (arg), NULL)
-
-/**
- * \brief Route with an argument-less handler
- */
-#define EHTTPD_ROUTE(route, handler) \
-    EHTTPD_ROUTE_ARG2((route), (handler), NULL, NULL)
-
-/**
- * \brief Filesystem route, with path argument
- */
-#define EHTTPD_ROUTE_FS_PATH(route, path) \
-    EHTTPD_ROUTE_ARG((route), ehttpd_route_fs_get, (const char *) (path))
-
-/**
- * \brief Filesystem template
- */
-#define EHTTPD_ROUTE_TPL(route, tpl_cb) \
-    EHTTPD_ROUTE_ARG2((route), ehttpd_route_fs_tpl, NULL, (ehttpd_tpl_cb_t) (tpl_cb))
-
-/**
- * \brief Filesystem template, with path argument
- */
-#define EHTTPD_ROUTE_TPL_PATH(route, tpl_cb, path) \
-    EHTTPD_ROUTE_ARG2((route), ehttpd_route_fs_tpl, (const char *) (path), (ehttpd_tpl_cb_t)(tpl_cb))
-
-/**
- * \brief Espfs route
- */
-#define EHTTPD_ROUTE_ESPFS(route) \
-    EHTTPD_ROUTE((route), ehttpd_route_espfs_get)
-
-/**
- * \brief Espfs route, with path argument
- */
-#define EHTTPD_ROUTE_ESPFS_PATH(route, path) \
-    EHTTPD_ROUTE_ARG((route), ehttpd_route_espfs_get, (const char *) (path))
-
-/**
- * \brief Espds template
- */
-#define EHTTPD_ROUTE_ESPFS_TPL(route, tpl_cb) \
-    EHTTPD_ROUTE_ARG2((route), ehttpd_route_espfs_tpl, NULL, (ehttpd_tpl_cb_t) (tpl_cb))
-
-/**
- * \brief Espfs template, with path argument
- */
-#define EHTTPD_ROUTE_ESPFS_TPL_PATH(route, tpl_cb, path) \
-    EHTTPD_ROUTE_ARG2((route), ehttpd_route_espfs_tpl, (const char *) (path), (ehttpd_tpl_cb_t)(tpl_cb))
-
-/**
- * \brief Redirect to URL
- */
-#define EHTTPD_ROUTE_REDIRECT(route, url) \
-    EHTTPD_ROUTE_ARG((route), ehttpd_route_redirect, (const char *) (url))
-
-/**
- * \brief Following routes are basic-auth protected
- */
-#define EHTTPD_ROUTE_AUTH(route, account_cb) \
-    EHTTPD_ROUTE_ARG((route), ehttpd_route_auth_basic, (ehttpd_auth_account_cb_t) (account_cb))
-
-/**
- * \brief Websocket route
- */
-#define EHTTPD_ROUTE_WS(route, connected_cb) \
-    EHTTPD_ROUTE_ARG((route), ehttpd_route_websocket, (ehttpd_ws_connected_cb_t) (connected_cb))
-
-/**
- * \brief Sentinel
- */
-#define EHTTPD_ROUTE_END() \
-    {NULL, NULL, NULL, NULL}
-
-
 /******************************
  * \section Filesystem Routes
  ******************************/
@@ -356,7 +267,7 @@ ehttpd_status_t ehttpd_route_auth_basic(ehttpd_conn_t *conn);
  * \section Websocket Routes
  *****************************/
 
-ehttpd_status_t ehttpd_route_websocket(ehttpd_conn_t *conn);
+ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn);
 
 
 /************************

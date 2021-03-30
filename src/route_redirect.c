@@ -18,10 +18,6 @@
 
 ehttpd_status_t ehttpd_route_redirect(ehttpd_conn_t *conn)
 {
-    if (conn->closed) {
-        return EHTTPD_STATUS_DONE;
-    }
-
     ehttpd_redirect(conn, (char *) conn->route->argv[0]);
     return EHTTPD_STATUS_DONE;
 }
@@ -31,18 +27,14 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
     const char *new_hostname = (char *) conn->route->argv[0];
     char *buf;
 
-    if (conn->closed) {
-        return EHTTPD_STATUS_DONE;
-    }
-
-    if (conn->hostname == NULL) {
+    if (conn->request.hostname == NULL) {
         return EHTTPD_STATUS_NOTFOUND;
     }
 
     /* Test hostname, pass on if it is the same... Not ignoring the case
      * because looks are everything!
      */
-    if (strcmp(conn->hostname, new_hostname) == 0) {
+    if (strcmp(conn->request.hostname, new_hostname) == 0) {
         return EHTTPD_STATUS_NOTFOUND;
     }
 
@@ -64,7 +56,7 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
 #endif
 
     const char *uri_fmt;
-    if (ehttpd_is_ssl(conn)) {
+    if (ehttpd_plat_is_ssl(conn)) {
         uri_fmt = "https://%s";
     } else {
         uri_fmt = "http://%s";
@@ -79,7 +71,7 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
     }
 
     sprintf(buf, uri_fmt, new_hostname);
-    EHTTPD_LOGD(__func__, "redirecting to hostname url %s", buf);
+    EHTTPD_LOGD(__func__, "redirecting to %s", buf);
     ehttpd_redirect(conn, buf);
     free(buf);
     return EHTTPD_STATUS_DONE;

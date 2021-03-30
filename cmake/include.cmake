@@ -20,9 +20,9 @@ set(libesphttpd_INCLUDE_DIRS
 if(CONFIG_IDF_TARGET_ESP8266 OR ESP_PLATFORM)
     set(FREERTOS true)
     set(libesphttpd_SRCS ${libesphttpd_SRCS}
-        ${libesphttpd_DIR}/src/esp32_flash.c
-        ${libesphttpd_DIR}/src/route_flash.c
-        ${libesphttpd_DIR}/src/route_wifi.c
+        #${libesphttpd_DIR}/src/esp32_flash.c
+        #${libesphttpd_DIR}/src/route_flash.c
+        #${libesphttpd_DIR}/src/route_wifi.c
     )
     set(libesphttpd_PRIV_REQUIRES
         app_update

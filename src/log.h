@@ -4,6 +4,11 @@
 
 #pragma once
 
+#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+# include <sdkconfig.h>
+#endif
+
+
 #if defined(CONFIG_EHTTPD_LOG_LEVEL_NONE)
 # define LOG_LEVEL LOG_NONE
 #elif defined(CONFIG_EHTTPD_LOG_LEVEL_ERROR)

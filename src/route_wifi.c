@@ -466,8 +466,8 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
 
     /* First call. Send header, fetch scan data and set up iterator. */
     if (iter == NULL) {
-        ehttpd_start_response(conn, 200);
-        ehttpd_header(conn, "Content-Type", "text/json");
+        ehttpd_response(conn, 200);
+        ehttpd_send_header(conn, "Content-Type", "text/json");
         ehttpd_end_headers(conn);
 
         data = get_scan_data();
@@ -1327,15 +1327,15 @@ ehttpd_status_t ehttpd_route_wifi_status(ehttpd_conn_t *conn)
         break;
     }
 
-    ehttpd_start_response(conn, 200);
-    ehttpd_header(conn, "Content-Type", "text/json");
+    ehttpd_response(conn, 200);
+    ehttpd_send_header(conn, "Content-Type", "text/json");
     ehttpd_end_headers(conn);
     ehttpd_send(conn, (uint8_t *) buf, -1);
     return EHTTPD_STATUS_DONE;
 
     err_out:
     EHTTPD_LOGE(TAG, "[%s] Failed.", __FUNCTION__);
-    ehttpd_start_response(conn, 500);
+    ehttpd_response(conn, 500);
     ehttpd_end_headers(conn);
 
     return EHTTPD_STATUS_DONE;

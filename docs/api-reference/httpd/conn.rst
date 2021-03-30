@@ -6,23 +6,26 @@ Connection
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_get_header
-.. doxygenfunction:: ehttpd_set_chunked_encoding
-.. doxygenfunction:: ehttpd_set_close
-.. doxygenfunction:: ehttpd_start_response
-.. doxygenfunction:: ehttpd_header
-.. doxygenfunction:: ehttpd_end_headers
-.. doxygenfunction:: ehttpd_add_cache_header
-.. doxygenfunction:: ehttpd_prepare
-.. doxygenfunction:: ehttpd_enqueue
-.. doxygenfunction:: ehttpd_enqueuef
-.. doxygenfunction:: ehttpd_flush
-.. doxygenfunction:: ehttpd_is_ssl
+.. doxygenfunction:: ehttpd_plat_is_ssl
+.. doxygenfunction:: ehttpd_plat_recv
+.. doxygenfunction:: ehttpd_plat_send
+.. doxygenfunction:: ehttpd_recv
 .. doxygenfunction:: ehttpd_send
-.. doxygenfunction:: ehttpd_disconnect
+.. doxygenfunction:: ehttpd_sendf
+.. doxygenfunction:: ehttpd_get_header
+.. doxygenfunction:: ehttpd_set_chunked
+.. doxygenfunction:: ehttpd_set_close
+.. doxygenfunction:: ehttpd_response
+.. doxygenfunction:: ehttpd_send_header
+.. doxygenfunction:: ehttpd_send_cache_header
+.. doxygenfunction:: ehttpd_chunk_start
+.. doxygenfunction:: ehttpd_chunk_end
 
 Structures
 ^^^^^^^^^^
+
+.. doxygenstruct:: ehttpd_request_t
+    :members:
 
 .. doxygenstruct:: ehttpd_conn_t
     :members:

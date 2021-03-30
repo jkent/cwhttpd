@@ -15,3 +15,4 @@ Type Definitions
 ^^^^^^^^^^^^^^^^
 
 .. doxygentypedef:: ehttpd_timer_handler_t
+.. doxygentypedef:: ehttpd_timer_t

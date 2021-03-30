@@ -25,63 +25,71 @@ config EHTTPD_LOG_LEVEL_VERBOSE
 
 endchoice # "Log level"
 
-config EHTTPD_DEFAULT_STACK_SIZE
-	int "Default task stack size"
-	range 1024 65535
-	default 8192
+config EHTTPD_LISTENER_STACK_SIZE
+	int "Listener task stack size"
+	range 0 65535
+	default 2048
 	help
-		Stack size reserved for the esphttpd task and route handlers.
+		Stack size reserved for the listener task.
 
-config EHTTPD_DEFAULT_USE_AFFINITY
-	bool "Enable affinity per task default"
-	default n
-	help
-		Enable processor affinity Support
-
-config EHTTPD_DEFAULT_AFFINITY
-	int "Core number for processor affinity"
-        depends on EHTTPD_DEFAULT_USE_AFFINITY
-	range 0 1
-	default 0
-	help
-		Select core 0 or core 1
-
-config EHTTPD_DEFAULT_PRIORITY
-	int "Process Task Priority"
+config EHTTPD_LISTENER_PRIORITY
+	int "Listener task priority"
 	range 1 31
-	default 4
+	default 1
 	help
-		Set libesphttpd Process Task Priority
+		Set the listener task priority.
 
-config EHTTPD_RECVBUF_SIZE
-	int "Max recv buffer size"
-	default 2048
+config EHTTPD_LISTENER_AFFINITY
+	int "Listener task processor affinity"
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
+	range -1 1
+	default -1
 	help
-		This is statically allocated per server instance.
+		For the listener task, select -1 to disable task pinning,
+		0 for PRO_CPU, and 1 for APP_CPU.
 
-config EHTTPD_SENDBUF_SIZE
-	int "Max send buffer size"
-	default 2048
+config EHTTPD_LISTENER_BACKLOG
+	int "Listener backlog"
+	range 1 64
+	default 2
 	help
-		This is statically allocated per connection.
+		How many connections that can be waiting in the listen queue.
+
+config EHTTPD_WORKER_STACK_SIZE
+	int "Worker task stack size"
+	range 0 65535
+	default 4096
+	help
+		Stack size reserved for worker tasks. This includes route handlers.
+
+config EHTTPD_WORKER_PRIORITY
+	int "Worker task priority"
+	range 1 31
+	default 1
+	help
+		Set the worker task priority.
+
+config EHTTPD_WORKER_AFFINITY
+	int "Worker task processor affinity"
+	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
+	range -1 1
+	default -1
+	help
+		For the worker task, select -1 to disable task pinning,
+		0 for PRO_CPU, and 1 for APP_CPU.
+
+config EHTTPD_WORKER_COUNT
+	int "Number of worker tasks"
+	range 1 64
+	default 2
+	help
+		Set the number of worker tasks to run.
 
 config EHTTPD_MAX_REQUEST_SIZE
 	int "Max length of request headers"
 	default 1024
 	help
 	    This is statically allocated per connection.
-
-config EHTTPD_LISTEN_BACKLOG
-	int "Listen backlog"
-	default 2
-	help
-		How many connections that can be waiting in the listen queue.
-
-config EHTTPD_USE_SHUTDOWN
-	bool "Enable shutdown support"
-	default n
-	help
-		Add support for server shutdown. Adds ~500 bytes of code.
 
 config EHTTPD_DEFAULT_CLOSE
 	bool "Default to closing connections"
@@ -109,7 +117,7 @@ endif # EHTTPD_ENABLE_CORS
 
 config EHTTPD_TCP_NODELAY
 	bool "Set TCP_NODELAY"
-	default y
+	default n
 	help
 		Set TCP_NODELAY to avoid waiting for a ACK to send multiple small
 		frames (It will disable Nagle's TCP Algorithm).  It can speed-up

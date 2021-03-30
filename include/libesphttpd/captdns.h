@@ -50,7 +50,6 @@ typedef struct ehttpd_captdns_t ehttpd_captdns_t;
  *
  * \endverbatim */
 ehttpd_captdns_t *ehttpd_captdns_start(
-    ehttpd_inst_t *inst, /** [in] initialized httpd instance */
     const char *addr /** [in] address:port to bind */
 );
 

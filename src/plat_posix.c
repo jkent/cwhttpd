@@ -8,7 +8,6 @@
 
 #include "cb.h"
 #include "log.h"
-#include "libesphttpd/captdns.h"
 #include "libesphttpd/httpd.h"
 #include "libesphttpd/port.h"
 
@@ -20,6 +19,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <stdint.h>
@@ -49,26 +49,41 @@
 
 #pragma GCC diagnostic ignored "-Wunused-label"
 
-#ifndef CONFIG_EHTTPD_RECVBUF_SIZE
-# define CONFIG_EHTTPD_RECVBUF_SIZE 2048
+#ifndef CONFIG_EHTTPD_LISTENER_STACK_SIZE
+# define CONFIG_EHTTPD_LISTENER_STACK_SIZE 1024
 #endif
 
-#ifndef CONFIG_EHTTPD_LISTEN_BACKLOG
-# define CONFIG_EHTTPD_LISTEN_BACKLOG 2
+#ifndef CONFIG_EHTTPD_LISTENER_PRIORITY
+# define CONFIG_EHTTPD_LISTENER_PRIORITY 1
 #endif
 
-#define inst_to_posix(container) container_of(container, posix_inst_t, inst)
-#define conn_to_posix(container) container_of(container, posix_conn_t, conn)
-
-#if defined(FREERTOS) && defined(UNIX)
-# define enter_critical() taskENTER_CRITICAL()
-# define exit_critical() taskEXIT_CRITICAL()
-#else
-# define enter_critical()
-# define exit_critical()
+#ifndef CONFIG_EHTTPD_LISTENER_AFFINITY
+# define CONFIG_EHTTPD_LISTENER_AFFINITY 0
 #endif
 
-typedef struct ehttpd_captdns_t ehttpd_captdns_t;
+#ifndef CONFIG_EHTTPD_WORKER_STACK_SIZE
+# define CONFIG_EHTTPD_WORKER_STACK_SIZE 1024
+#endif
+
+#ifndef CONFIG_EHTTPD_WORKER_PRIORITY
+# define CONFIG_EHTTPD_WORKER_PRIORITY 1
+#endif
+
+#ifndef CONFIG_EHTTPD_WORKER_AFFINITY
+# define CONFIG_EHTTPD_WORKER_AFFINITY 0
+#endif
+
+#ifndef CONFIG_EHTTPD_WORKER_COUNT
+# define CONFIG_EHTTPD_WORKER_COUNT 8
+#endif
+
+#ifndef CONFIG_EHTTPD_LISTENER_BACKLOG
+# define CONFIG_EHTTPD_LISTENER_BACKLOG 2
+#endif
+
+#define inst_to_pinst(container) container_of(container, posix_inst_t, inst)
+#define conn_to_pconn(container) container_of(container, posix_conn_t, conn)
+
 typedef struct posix_conn_t posix_conn_t;
 typedef struct posix_inst_t posix_inst_t;
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
@@ -83,43 +98,16 @@ struct SSL_CTX {
 };
 #endif
 
-struct posix_inst_t {
-    ehttpd_inst_t inst;
-
-    uint8_t buf[CONFIG_EHTTPD_RECVBUF_SIZE];
-
-    ehttpd_mutex_t *mutex;
-    ehttpd_thread_t *thread;
-
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS) || defined(CONFIG_EHTTPD_TLS_OPENSSL)
-    SSL_CTX *ssl;
-#endif
-
-    int listen_fd;
-    struct sockaddr_in listen_addr;
-
-    int captdns_fd;
-    ehttpd_captdns_t *captdns;
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-    int shutdown_fd;
-    uint16_t shutdown_port;
-#endif
-    bool shutdown;
-
-    ehttpd_flags_t flags;
-    posix_conn_t *conn_buf;
-    size_t conn_max;
-};
+typedef struct conn_data_t {
+    int fd;
+    struct sockaddr_in addr;
+} conn_data_t;
 
 struct posix_conn_t {
     ehttpd_conn_t conn;
-
-    int fd;
-    bool need_write;
-    bool need_close;
-    int port;
-    struct sockaddr_in addr;
+    ehttpd_thread_t *thread;
+    conn_data_t conn_data;
+    bool error;
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
     mbedtls_ssl_context ssl;
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
@@ -127,200 +115,194 @@ struct posix_conn_t {
 #endif
 };
 
-/* Forward declarations */
-static void close_connection(ehttpd_conn_t *conn, bool do_shutdown);
-static void server_task(void *arg);
+struct posix_inst_t {
+    ehttpd_inst_t inst;
+    ehttpd_flags_t flags;
 
-void ehttpd_end_request(ehttpd_conn_t *conn);
-void ehttpd_captdns_recv(ehttpd_captdns_t *captdns);
+    ehttpd_thread_t *thread;
+
+    struct sockaddr_in listen_addr;
+    int listen_fd;
+
+    conn_data_t conn_data;
+    int num_connections;
+    ehttpd_semaphore_t *conn_empty;
+    ehttpd_semaphore_t *conn_full;
+
+    ehttpd_semaphore_t *shutdown;
+
+#if defined(CONFIG_EHTTPD_TLS_MBEDTLS) || defined(CONFIG_EHTTPD_TLS_OPENSSL)
+    SSL_CTX *ssl;
+#endif
+    posix_conn_t pconn[CONFIG_EHTTPD_WORKER_COUNT];
+};
+
+/* Forward declarations */
+static void listener_task(void *arg);
+static void worker_task(void *arg);
 
 
 /*******************************
  * \section Instance Functions
  *******************************/
 
-static void ehttpd_free(ehttpd_inst_t *inst)
+void ehttpd_destroy(ehttpd_inst_t *inst)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
 
-    ehttpd_mutex_delete(posix_inst->mutex);
+    int num_workers = 0;
+    for (int i = 0; i < CONFIG_EHTTPD_WORKER_COUNT; i++) {
+        if (pinst->pconn[i].conn.inst != 0) {
+            num_workers++;
+        }
+    }
 
-    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
+    pinst->shutdown = ehttpd_semaphore_create(UINT32_MAX,
+            CONFIG_EHTTPD_WORKER_COUNT - num_workers);
+    for (int i = 0; i < CONFIG_EHTTPD_WORKER_COUNT; i++) {
+        ehttpd_semaphore_take(pinst->shutdown, UINT32_MAX);
+    }
+
+    if (pinst->flags & EHTTPD_FLAG_TLS) {
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        free(posix_inst->ssl);
+        free(pinst->ssl);
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        SSL_CTX_free(posix_inst->ssl);
+        SSL_CTX_free(pinst->ssl);
 #endif
     }
 
-    if (posix_inst->flags & EHTTPD_FLAG_MANAGED_CONN_BUF) {
-        free(posix_inst->conn_buf);
+    while (pinst->inst.route_head) {
+        ehttpd_route_remove(&pinst->inst, 0);
     }
-    while (posix_inst->inst.route_head) {
-        ehttpd_route_remove(&posix_inst->inst, 0);
-    }
-    free(posix_inst);
+
+    ehttpd_semaphore_delete(pinst->conn_empty);
+    ehttpd_semaphore_delete(pinst->conn_full);
+
+    ehttpd_semaphore_delete(pinst->shutdown);
+    ehttpd_thread_t *thread = pinst->thread;
+    free(pinst);
+    ehttpd_thread_delete(thread);
 }
 
-ehttpd_inst_t *ehttpd_init(const char *addr, void *conn_buf, size_t conn_max,
-        ehttpd_flags_t flags)
+ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
 {
-    if (conn_buf == NULL) {
-        conn_buf = calloc(1, ehttpd_get_conn_buf_size(conn_max));
-        if (conn_buf == NULL) {
-            return NULL;
-        }
-        flags |= EHTTPD_FLAG_MANAGED_CONN_BUF;
-    }
-
-    posix_inst_t *posix_inst =
+    posix_inst_t *pinst =
             (posix_inst_t *) calloc(1, sizeof(posix_inst_t));
-    if (posix_inst == NULL) {
+    if (pinst == NULL) {
         EHTTPD_LOGE(__func__, "calloc");
-        goto err;
+        return NULL;
     }
 
-    posix_inst->listen_fd = -1;
-    posix_inst->captdns_fd = -1;
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-    posix_inst->shutdown_fd = -1;
+    pinst->flags = flags;
+
+#if defined(CONFIG_EHTTPD_TLS_NONE)
+    if (pinst->flags & EHTTPD_FLAG_TLS) {
+        EHTTPD_LOGW(__func__, "TLS support not enabled in");
+        pinst->flags &= ~EHTTPD_FLAG_TLS;
+    }
 #endif
 
-    posix_inst->flags = flags;
-    posix_inst->conn_buf = conn_buf;
-    posix_inst->conn_max = conn_max;
-
-    posix_inst->mutex = ehttpd_mutex_create(true);
-    if (posix_inst->mutex == NULL) {
-        EHTTPD_LOGE(__func__, "create mutex");
-        goto err;
-    }
-
-    if (flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        int ret;
-        posix_inst->ssl = malloc(sizeof(SSL_CTX));
-        if (posix_inst->ssl == NULL) {
-            EHTTPD_LOGE(__func__, "create ssl context");
-            goto err;
-        }
-        mbedtls_ssl_config_init(&posix_inst->ssl->conf);
-        mbedtls_x509_crt_init(&posix_inst->ssl->cert);
-        mbedtls_pk_init(&posix_inst->ssl->pkey);
-        mbedtls_entropy_init(&posix_inst->ssl->entropy);
-        mbedtls_ctr_drbg_init(&posix_inst->ssl->ctr_drbg);
-        ret = mbedtls_ctr_drbg_seed(&posix_inst->ssl->ctr_drbg,
-                mbedtls_entropy_func, &posix_inst->ssl->entropy, NULL, 0);
-        if (ret != 0) {
-            EHTTPD_LOGE(__func__, "mbedtls_ctr_drbg_seed %d", ret);
-            goto err;
-        }
-        ret = mbedtls_ssl_config_defaults(&posix_inst->ssl->conf,
-                MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM,
-                MBEDTLS_SSL_PRESET_DEFAULT);
-        if (ret != 0) {
-            EHTTPD_LOGE(__func__, "mbedtls_ssl_config_defaults %d", ret);
-            goto err;
-        }
-        mbedtls_ssl_conf_rng(&posix_inst->ssl->conf, mbedtls_ctr_drbg_random,
-                &posix_inst->ssl->ctr_drbg);
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        posix_inst->ssl = SSL_CTX_new(TLS_server_method());
-        if (posix_inst->ssl == NULL) {
-            EHTTPD_LOGE(__func__, "create ssl context");
-            goto err;
-        }
-#endif
-    }
+    pinst->listen_fd = -1;
 
     if (addr == NULL) {
-        addr = (flags & EHTTPD_FLAG_TLS) ? "0.0.0.0:443" : "0.0.0.0:80";
+        addr = (pinst->flags & EHTTPD_FLAG_TLS) ? "0.0.0.0:443" :
+                "0.0.0.0:80";
     }
 
     char *s = strdup(addr);
     char *p = strrchr(s, ':');
     if (p) {
         *p = '\0';
-        posix_inst->listen_addr.sin_port = htons(strtol(p + 1, NULL, 10));
+        pinst->listen_addr.sin_port = htons(strtol(p + 1, NULL, 10));
     }
-    inet_pton(AF_INET, s, &posix_inst->listen_addr.sin_addr);
+    pinst->listen_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, s, &pinst->listen_addr.sin_addr);
     free(s);
 
-    return &posix_inst->inst;
+    if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+        int ret;
+        pinst->ssl = malloc(sizeof(SSL_CTX));
+        if (pinst->ssl == NULL) {
+            EHTTPD_LOGE(__func__, "malloc");
+            goto cleanup;
+        }
+        mbedtls_ssl_config_init(&pinst->ssl->conf);
+        mbedtls_x509_crt_init(&pinst->ssl->cert);
+        mbedtls_pk_init(&pinst->ssl->pkey);
+        mbedtls_entropy_init(&pinst->ssl->entropy);
+        mbedtls_ctr_drbg_init(&pinst->ssl->ctr_drbg);
+        ret = mbedtls_ctr_drbg_seed(&pinst->ssl->ctr_drbg,
+                mbedtls_entropy_func, &pinst->ssl->entropy, NULL, 0);
+        if (ret != 0) {
+            EHTTPD_LOGE(__func__, "mbedtls_ctr_drbg_seed %d", ret);
+            goto cleanup;
+        }
+        ret = mbedtls_ssl_config_defaults(&pinst->ssl->conf,
+                MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM,
+                MBEDTLS_SSL_PRESET_DEFAULT);
+        if (ret != 0) {
+            EHTTPD_LOGE(__func__, "mbedtls_ssl_config_defaults %d", ret);
+            goto cleanup;
+        }
+        mbedtls_ssl_conf_rng(&pinst->ssl->conf, mbedtls_ctr_drbg_random,
+                &pinst->ssl->ctr_drbg);
+#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
+        pinst->ssl = SSL_CTX_new(TLS_server_method());
+        if (pinst->ssl == NULL) {
+            EHTTPD_LOGE(__func__, "create ssl context");
+            goto cleanup;
+        }
+#endif
+    }
 
-err:
-    ehttpd_free(&posix_inst->inst);
+    pinst->conn_empty = ehttpd_semaphore_create(1, 1);
+    pinst->conn_full = ehttpd_semaphore_create(1, 0);
+
+    return &pinst->inst;
+
+cleanup:
+    ehttpd_destroy(&pinst->inst);
     return NULL;
-}
-
-size_t ehttpd_get_conn_buf_size(size_t conn_max)
-{
-    return sizeof(posix_conn_t) * conn_max;
 }
 
 bool ehttpd_start(ehttpd_inst_t *inst)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
 
-    posix_inst->thread = ehttpd_thread_create(server_task, posix_inst, NULL);
-    if (posix_inst->thread == NULL) {
-        EHTTPD_LOGE(__func__, "thread create");
-        ehttpd_free(&posix_inst->inst);
-        return false;
+    ehttpd_thread_attr_t thread_attr = {
+        .name = "ehttp_listener",
+        .stack_size = CONFIG_EHTTPD_LISTENER_STACK_SIZE,
+        .priority = CONFIG_EHTTPD_LISTENER_PRIORITY,
+        .affinity = CONFIG_EHTTPD_LISTENER_AFFINITY,
+    };
+    pinst->thread = ehttpd_thread_create(listener_task, pinst,
+            &thread_attr);
+    if (pinst->thread == NULL) {
+        EHTTPD_LOGE(__func__, "listener thread");
+        goto err;
+    }
+
+    thread_attr.name = "ehttp_worker";
+    thread_attr.stack_size = CONFIG_EHTTPD_WORKER_STACK_SIZE;
+    thread_attr.priority = CONFIG_EHTTPD_WORKER_PRIORITY;
+    thread_attr.affinity = CONFIG_EHTTPD_WORKER_AFFINITY;
+    for (int i = 0; i < CONFIG_EHTTPD_WORKER_COUNT; i++) {
+        posix_conn_t *pconn = &pinst->pconn[i];
+        pconn->conn.inst = &pinst->inst;
+        pconn->thread = ehttpd_thread_create(worker_task, pconn,
+                &thread_attr);
+        if (pconn->thread == NULL) {
+            EHTTPD_LOGE(__func__, "worker thread");
+            goto err;
+        }
     }
 
     return true;
-}
 
-void ehttpd_lock(ehttpd_inst_t *inst)
-{
-    posix_inst_t *posix_inst = inst_to_posix(inst);
-
-    ehttpd_mutex_lock(posix_inst->mutex);
-}
-
-void ehttpd_unlock(ehttpd_inst_t *inst)
-{
-    posix_inst_t *posix_inst = inst_to_posix(inst);
-
-    ehttpd_mutex_unlock(posix_inst->mutex);
-}
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-void ehttpd_shutdown(ehttpd_inst_t *inst)
-{
-    posix_inst_t *posix_inst = inst_to_posix(inst);
-
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd <= 0) {
-        EHTTPD_LOGE(__func__, "socket err %d", fd);
-        return;
-    }
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = htons(posix_inst->shutdown_port);
-
-    EHTTPD_LOGI(__func__, "sending shutdown");
-
-    sendto(fd, "shutdown", 8, 0, (struct sockaddr *) &addr, sizeof(addr));
-    close(fd);
-}
-#endif
-
-void ehttpd_captdns_hook(ehttpd_inst_t *inst, ehttpd_captdns_t *captdns,
-        int fd)
-{
-    posix_inst_t *posix_inst = inst_to_posix(inst);
-
-    ehttpd_lock(inst);
-
-    posix_inst->captdns = captdns;
-    posix_inst->captdns_fd = fd;
-
-    ehttpd_unlock(inst);
+err:
+    ehttpd_destroy(inst);
+    return false;
 }
 
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
@@ -328,48 +310,63 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
         size_t cert_len, const void *priv_key,
         size_t priv_key_len)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
+
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
+        EHTTPD_LOGW(__func__, "cannot add cert to non-tls instance");
+        return;
+    }
 
     int ret;
-    ret = mbedtls_x509_crt_parse(&posix_inst->ssl->cert,
+    ret = mbedtls_x509_crt_parse(&pinst->ssl->cert,
             (const unsigned char *) cert, cert_len);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "error adding cert");
+        EHTTPD_LOGE(__func__, "cannot add cert");
         return;
     }
 
-    ret = mbedtls_pk_parse_key(&posix_inst->ssl->pkey,
+    ret = mbedtls_pk_parse_key(&pinst->ssl->pkey,
             (const unsigned char *) priv_key, priv_key_len, NULL, 0);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "error adding private key");
+        EHTTPD_LOGE(__func__, "cannot add private key");
         return;
     }
 
-    ret = mbedtls_ssl_conf_own_cert(&posix_inst->ssl->conf,
-            &posix_inst->ssl->cert, &posix_inst->ssl->pkey);
+    ret = mbedtls_ssl_conf_own_cert(&pinst->ssl->conf,
+            &pinst->ssl->cert, &pinst->ssl->pkey);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "error setting cert");
+        EHTTPD_LOGE(__func__, "cannot set cert");
     }
 }
 
 void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
 
-    mbedtls_ssl_conf_authmode(&posix_inst->ssl->conf,
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
+        EHTTPD_LOGW(__func__, "cannot set authmode on non-tls instance");
+        return;
+    }
+
+    mbedtls_ssl_conf_authmode(&pinst->ssl->conf,
             enable ? MBEDTLS_SSL_VERIFY_REQUIRED : MBEDTLS_SSL_VERIFY_NONE);
 }
 
 void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
         size_t cert_len)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
+
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
+        EHTTPD_LOGW(__func__, "cannot add cert to non-tls instance");
+        return;
+    }
 
     int ret;
-    ret = mbedtls_x509_crt_parse(&posix_inst->ssl->cert,
+    ret = mbedtls_x509_crt_parse(&pinst->ssl->cert,
             (const unsigned char *) cert, cert_len);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "error adding cert");
+        EHTTPD_LOGE(__func__, "cannot add cert");
     }
 }
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
@@ -377,21 +374,21 @@ static bool set_der_cert_and_key(ehttpd_inst_t *inst,
         const void *cert, size_t cert_len,
         const void *priv_key, size_t priv_key_len)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
     bool status = true;
 
-    if (!(posix_inst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
         EHTTPD_LOGE(__func__, "not an ssl instance");
         return false;
     }
 
-    int ret = SSL_CTX_use_certificate_ASN1(posix_inst->ssl, cert_len, cert);
+    int ret = SSL_CTX_use_certificate_ASN1(pinst->ssl, cert_len, cert);
     if (ret == 0) {
         EHTTPD_LOGE(__func__, "SSL_CTX_use_certificate_ASN1 failed: %d", ret);
         status = false;
     }
 
-    ret = SSL_CTX_use_RSAPrivateKey_ASN1(posix_inst->ssl, priv_key,
+    ret = SSL_CTX_use_RSAPrivateKey_ASN1(pinst->ssl, priv_key,
             priv_key_len);
     if (ret == 0) {
         EHTTPD_LOGE(__func__, "SSL_CTX_use_RSAPrivateKey_ASN1 failed: %d",
@@ -412,9 +409,9 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
         size_t cert_len, const void *priv_key,
         size_t priv_key_len)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
 
-    if (!(posix_inst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
         EHTTPD_LOGE(__func__, "not an ssl instance");
         return;
     }
@@ -427,10 +424,10 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
 
 void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
     int flags;
 
-    if (!(posix_inst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
         EHTTPD_LOGE(__func__, "not an ssl instance");
         return;
     }
@@ -440,21 +437,21 @@ void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
     } else {
         flags = SSL_VERIFY_NONE;
     }
-    SSL_CTX_set_verify(posix_inst->ssl, flags, NULL);
+    SSL_CTX_set_verify(pinst->ssl, flags, NULL);
 }
 
 void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
         size_t cert_len)
 {
-    posix_inst_t *posix_inst = inst_to_posix(inst);
+    posix_inst_t *pinst = inst_to_pinst(inst);
 
-    if (!(posix_inst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
         EHTTPD_LOGE(__func__, "not an ssl instance");
         return;
     }
 
     X509 *client_cacert = d2i_X509(NULL, cert, cert_len);
-    int rv = SSL_CTX_add_client_CA(posix_inst->ssl, client_cacert);
+    int rv = SSL_CTX_add_client_CA(pinst->ssl, client_cacert);
     if (rv == 0) {
         EHTTPD_LOGE(__func__, "failed");
     }
@@ -466,538 +463,347 @@ void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
  * \section Connection Functions
  *********************************/
 
-bool ehttpd_is_ssl(ehttpd_conn_t *conn)
+bool ehttpd_plat_is_ssl(ehttpd_conn_t *conn)
 {
-    posix_inst_t *posix_inst = inst_to_posix(conn->inst);
+    posix_inst_t *pinst = inst_to_pinst(conn->inst);
 
-    return posix_inst->flags & EHTTPD_FLAG_TLS;
+    return pinst->flags & EHTTPD_FLAG_TLS;
 }
 
-ssize_t ehttpd_send(ehttpd_conn_t *conn, void *buf, size_t len)
+ssize_t ehttpd_plat_send(ehttpd_conn_t *conn, const void *buf, size_t len)
 {
     ssize_t ret = -1;
-    posix_conn_t *posix_conn = conn_to_posix(conn);
-    posix_inst_t *posix_inst = inst_to_posix(conn->inst);
+    posix_conn_t *pconn = conn_to_pconn(conn);
+    posix_inst_t *pinst = inst_to_pinst(conn->inst);
 
     if (len == 0) {
         return 0;
     }
 
-    posix_conn->need_write = true;
-
-    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
+    if (pinst->flags & EHTTPD_FLAG_TLS) {
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        while ((ret = mbedtls_ssl_write(&posix_conn->ssl, buf, len)) < 0) {
-            if ((ret == MBEDTLS_ERR_SSL_WANT_READ) ||
-                    (ret == MBEDTLS_ERR_SSL_WANT_WRITE)) {
-                continue;
-            }
+        ret = mbedtls_ssl_write(&pconn->ssl, buf, len);
+        if (ret < 0) {
+            pconn->error = true;
             if (ret == MBEDTLS_ERR_NET_CONN_RESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer");
-                close_connection(conn, false);
+                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
             } else if (ret < 0) {
                 EHTTPD_LOGE(__func__, "mbedtls_ssl_write %d", ret);
-                close_connection(conn, false);
             }
-            ret = -1;
-            break;
         }
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        enter_critical();
-        ret = SSL_write(posix_conn->ssl, buf, len);
-        exit_critical();
+        ret = SSL_write(pconn->ssl, buf, len);
 #endif
     } else {
-        ret = write(posix_conn->fd, buf, len);
+        ret = write(pconn->conn_data.fd, buf, len);
         if (ret < 0) {
+            pconn->error = true;
             if (errno == ECONNRESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer");
-                close_connection(conn, false);
-                return -1;
+                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+                return ret;
             } else if (errno == EPIPE) {
-                EHTTPD_LOGW(__func__, "broken pipe");
-                close_connection(conn, false);
-                return -1;
+                EHTTPD_LOGW(__func__, "broken pipe %p", pconn);
+                return ret;
             }
             EHTTPD_LOGE(__func__, "write %d", errno);
-            close_connection(conn, false);
-            return -1;
         }
     }
 
     return ret;
 }
 
-void ehttpd_disconnect(ehttpd_conn_t *conn)
+ssize_t ehttpd_plat_recv(ehttpd_conn_t *conn, void *buf, size_t len)
 {
-    posix_conn_t *posix_conn = conn_to_posix(conn);
+    posix_conn_t *pconn = conn_to_pconn(conn);
+    posix_inst_t *pinst = inst_to_pinst(conn->inst);
+    ssize_t ret = -1;
 
-    posix_conn->need_close = true;
-}
-
-static void close_connection(ehttpd_conn_t *conn, bool do_shutdown)
-{
-    posix_conn_t *posix_conn = conn_to_posix(conn);
-    posix_inst_t *posix_inst = inst_to_posix(conn->inst);
-
-    if (!conn->closed) {
-        conn->closed = true;
-        ehttpd_recv_cb(conn, NULL, 0);
-    }
-
-    if (do_shutdown) {
-        if (posix_inst->flags & EHTTPD_FLAG_TLS) {
+    if (pinst->flags & EHTTPD_FLAG_TLS) {
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-            int ret;
-            while ((ret = mbedtls_ssl_close_notify(&posix_conn->ssl)) < 0) {
-                if ((ret == MBEDTLS_ERR_SSL_WANT_READ) ||
-                        (ret == MBEDTLS_ERR_SSL_WANT_WRITE)) {
-                    continue;
-                }
-                EHTTPD_LOGE(__func__, "mbedtls_ssl_close_notify %d", ret);
-                break;
+        ret = mbedtls_ssl_read(&pconn->ssl, buf, len);
+        if (ret < 0) {
+            if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
+                /* do nothing */
+            } else if (ret == MBEDTLS_ERR_NET_CONN_RESET) {
+                pconn->error = true;
+                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+            } else {
+                pconn->error = true;
+                EHTTPD_LOGE(__func__, "mbedtls error: %d", ret);
             }
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-            enter_critical();
-            int ret = SSL_shutdown(posix_conn->ssl);
-            exit_critical();
-            if (ret == 0) {
-                return;
-            } else if (ret < 0) {
-                EHTTPD_LOGE(__func__, "SSL_shutdown %d", ret);
-            }
-#endif
         }
-
-        shutdown(posix_conn->fd, SHUT_RDWR);
-    }
-
-    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        mbedtls_ssl_free(&posix_conn->ssl);
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        SSL_free(posix_conn->ssl);
+        ret = SSL_read(pconn->ssl, buf, len);
+        if (ret < 0) {
+            pconn->error = true;
+            int err = SSL_get_error(pconn->ssl, ret);
+            EHTTPD_LOGE(__func__, "SSL_read %d", err);
+        }
 #endif
-
+    } else {
+        ret = recv(pconn->conn_data.fd, buf, len, 0);
+        if (ret < 0) {
+            pconn->error = true;
+            if (errno == ECONNRESET) {
+                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+                return ret;
+            }
+            EHTTPD_LOGE(__func__, "recv error %d", errno);
+        }
     }
-
-    close(posix_conn->fd);
-    memset(posix_conn, 0, sizeof(*posix_conn));
-    posix_conn->conn.inst = &posix_inst->inst;
-    posix_conn->fd = -1;
-
-    EHTTPD_LOGD(__func__, "closed %p", conn);
+    return ret;
 }
 
 
-/***************************
- * \section Task Functions
- ***************************/
+/**************************
+ * \section Listener Task
+ **************************/
 
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-static void init_shutdown(posix_inst_t *posix_inst);
-#endif
-static bool init_listen(posix_inst_t *posix_inst);
-static void connect_event(posix_conn_t *posix_conn);
-static void write_event(posix_conn_t *posix_conn);
-static void read_event(posix_conn_t *posix_conn);
-
-static void server_task(void *arg)
+static void listener_task(void *arg)
 {
-    posix_inst_t *posix_inst = inst_to_posix(arg);
-    fd_set read_set, write_set;
-    int max_fd;
+    posix_inst_t *pinst = inst_to_pinst(arg);
 
-    posix_inst->shutdown = false;
-
-    memset(posix_inst->conn_buf, 0,
-            sizeof(posix_conn_t) * posix_inst->conn_max);
-
-    for (int i = 0; i < posix_inst->conn_max; i++) {
-        posix_inst->conn_buf[i].conn.inst = &posix_inst->inst;
-        posix_inst->conn_buf[i].fd = -1;
-    }
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-    init_shutdown(posix_inst);
-#endif
-
-    if (!init_listen(posix_inst)) {
-        ehttpd_thread_delete(posix_inst->thread);
-    }
-
-    while (!posix_inst->shutdown) {
-        posix_conn_t *free_conn = NULL;
-        max_fd = 0;
-
-        FD_ZERO(&read_set);
-        FD_ZERO(&write_set);
-
-        for (int i = 0; i < posix_inst->conn_max; i++) {
-            posix_conn_t *posix_conn = &posix_inst->conn_buf[i];
-
-            if (posix_conn->fd < 0) {
-                if (free_conn == NULL) {
-                    free_conn = posix_conn;
-                }
-                continue;
-            }
-
-            FD_SET(posix_conn->fd, &read_set);
-            if (posix_conn->need_write || posix_conn->need_close) {
-                FD_SET(posix_conn->fd, &write_set);
-            }
-
-            max_fd = posix_conn->fd > max_fd ? posix_conn->fd : max_fd;
-        }
-
-        if (free_conn) {
-            FD_SET(posix_inst->listen_fd, &read_set);
-            max_fd = posix_inst->listen_fd > max_fd ?
-                    posix_inst->listen_fd : max_fd;
-        }
-
-        if (posix_inst->captdns_fd >= 0) {
-            FD_SET(posix_inst->captdns_fd, &read_set);
-            max_fd = posix_inst->captdns_fd > max_fd ?
-                    posix_inst->captdns_fd : max_fd;
-        }
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-        FD_SET(posix_inst->shutdown_fd, &read_set);
-        max_fd = posix_inst->shutdown_fd > max_fd ?
-                posix_inst->shutdown_fd : max_fd;
-#endif
-
-        struct timeval timeout = {
-            .tv_sec = 0,
-            .tv_usec = 100000,
-        };
-        if (select(max_fd + 1, &read_set, &write_set, NULL, &timeout) <= 0) {
-            continue;
-        }
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-        if (FD_ISSET(posix_inst->shutdown_fd, &read_set)) {
-            posix_inst->shutdown = true;
-        }
-#endif
-
-        if ((posix_inst->captdns_fd >= 0) && FD_ISSET(posix_inst->captdns_fd,
-                &read_set)) {
-            ehttpd_captdns_recv(posix_inst->captdns);
-        }
-
-        if (FD_ISSET(posix_inst->listen_fd, &read_set)) {
-            int i;
-            connect_event(free_conn);
-            for (i = 0; i < posix_inst->conn_max; i++) {
-                posix_conn_t *posix_conn = &posix_inst->conn_buf[i];
-                if (posix_conn->fd < 0) {
-                    continue;
-                }
-            }
-            if (i == posix_inst->conn_max) {
-                ehttpd_set_close(&free_conn->conn, true);
-            }
-        }
-
-        for (int i = 0; i < posix_inst->conn_max; i++) {
-            posix_conn_t *posix_conn = &posix_inst->conn_buf[i];
-
-            if (posix_conn->fd < 0) {
-                continue;
-            }
-
-            if (FD_ISSET(posix_conn->fd, &read_set)) {
-                read_event(posix_conn);
-            }
-
-            if (FD_ISSET(posix_conn->fd, &write_set)) {
-                write_event(posix_conn);
-            }
-        }
-    }
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-    close(posix_inst->shutdown_fd);
-#endif
-    close(posix_inst->listen_fd);
-    ehttpd_captdns_shutdown(posix_inst->captdns);
-
-    for (int i = 0; i < posix_inst->conn_max; i++) {
-        posix_conn_t *posix_conn = &posix_inst->conn_buf[i];
-
-        if (posix_conn->fd >= 0) {
-            close_connection(&posix_conn->conn, true);
-        }
-    }
-
-    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        mbedtls_x509_crt_free(&posix_inst->ssl->cert);
-        mbedtls_pk_free(&posix_inst->ssl->pkey);
-        mbedtls_ssl_config_free(&posix_inst->ssl->conf);
-        mbedtls_ctr_drbg_free(&posix_inst->ssl->ctr_drbg);
-        mbedtls_entropy_free(&posix_inst->ssl->entropy);
-        free(posix_inst->ssl);
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        SSL_CTX_free(posix_inst->ssl);
-#endif
-    }
-
-    ehttpd_thread_delete(posix_inst->thread);
-    ehttpd_free(&posix_inst->inst);
-}
-
-#if defined(CONFIG_EHTTPD_USE_SHUTDOWN)
-static void init_shutdown(posix_inst_t *posix_inst)
-{
-    char buf[16];
-    posix_inst->shutdown_port = 60000;
-
-    struct sockaddr_in shutdown_addr;
-    memset(&shutdown_addr, 0, sizeof(shutdown_addr));
-    shutdown_addr.sin_family = AF_INET;
-    shutdown_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    shutdown_addr.sin_port = htons(posix_inst->shutdown_port);
-
-    inet_ntop(AF_INET, &shutdown_addr.sin_addr, buf, sizeof(buf));
-
-    posix_inst->shutdown_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    while (bind(posix_inst->shutdown_fd, (struct sockaddr *) &shutdown_addr,
-            sizeof(shutdown_addr)) != 0) {
-        posix_inst->shutdown_port++;
-        shutdown_addr.sin_port = htons(posix_inst->shutdown_port);
-    }
-
-    EHTTPD_LOGI(__func__, "shutdown bound to UDP %s:%d", buf,
-            posix_inst->shutdown_port);
-}
-#endif
-
-static bool init_listen(posix_inst_t *posix_inst)
-{
-    posix_inst->listen_addr.sin_family = AF_INET;
-
-    posix_inst->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (posix_inst->listen_fd < 0) {
+    pinst->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (pinst->listen_fd < 0) {
         EHTTPD_LOGE(__func__, "failed to create socket");
-        return false;
+        goto cleanup;
     }
+
+    int flags = fcntl(pinst->listen_fd, F_GETFL);
+    fcntl(pinst->listen_fd, F_SETFL, flags | O_NONBLOCK);
 
     int enable = 1;
-    setsockopt(posix_inst->listen_fd, SOL_SOCKET, SO_REUSEADDR, &enable,
+    setsockopt(pinst->listen_fd, SOL_SOCKET, SO_REUSEADDR, &enable,
             sizeof(int));
 
     char buf[16];
-    inet_ntop(AF_INET, &posix_inst->listen_addr.sin_addr, buf, sizeof(buf));
+    inet_ntop(AF_INET, &pinst->listen_addr.sin_addr, buf, sizeof(buf));
 
-    if (bind(posix_inst->listen_fd,
-            (struct sockaddr *) &posix_inst->listen_addr,
-            sizeof(posix_inst->listen_addr)) < 0) {
+    if (bind(pinst->listen_fd,
+            (struct sockaddr *) &pinst->listen_addr,
+            sizeof(pinst->listen_addr)) < 0) {
         EHTTPD_LOGE(__func__, "unable to bind to TCP %s:%d", buf,
-                ntohs(posix_inst->listen_addr.sin_port));
-        close(posix_inst->listen_fd);
-        posix_inst->listen_fd = -1;
-        return false;
+                ntohs(pinst->listen_addr.sin_port));
+        goto cleanup;
     }
 
-    if (listen(posix_inst->listen_fd, CONFIG_EHTTPD_LISTEN_BACKLOG) < 0) {
+    if (listen(pinst->listen_fd, CONFIG_EHTTPD_LISTENER_BACKLOG) < 0) {
         EHTTPD_LOGE(__func__, "unable to listen on TCP %s:%d", buf,
-                ntohs(posix_inst->listen_addr.sin_port));
-        close(posix_inst->listen_fd);
-        posix_inst->listen_fd = -1;
-        return false;
+                ntohs(pinst->listen_addr.sin_port));
+        goto cleanup;
     }
 
     EHTTPD_LOGI(__func__, "esphttpd listening on TCP %s:%d%s", buf,
-            ntohs(posix_inst->listen_addr.sin_port),
-            (posix_inst->flags & EHTTPD_FLAG_TLS) ? " TLS" : "");
-    return true;
-}
+            ntohs(pinst->listen_addr.sin_port),
+            (pinst->flags & EHTTPD_FLAG_TLS) ? " TLS" : "");
 
-static void connect_event(posix_conn_t *posix_conn)
-{
-    posix_inst_t *posix_inst = inst_to_posix(posix_conn->conn.inst);
-    socklen_t len = sizeof(posix_conn->addr);
+    while (!pinst->shutdown) {
+        fd_set read_set;
+        struct timeval timeout = {
+            .tv_usec = 250000,
+        };
 
-    posix_conn->fd = accept(posix_inst->listen_fd,
-            (struct sockaddr *) &posix_conn->addr, (socklen_t *) &len);
-    if (posix_conn->fd < 0) {
-        EHTTPD_LOGE(__func__, "accept failed");
-        return;
+        FD_ZERO(&read_set);
+        FD_SET(pinst->listen_fd, &read_set);
+        if (select(pinst->listen_fd + 1, &read_set, NULL, NULL,
+                &timeout) <= 0) {
+            continue;
+        }
+
+        while (!pinst->shutdown) {
+            if (ehttpd_semaphore_take(pinst->conn_empty, 250)) {
+                break;
+            }
+        }
+        if (pinst->shutdown) {
+            ehttpd_semaphore_give(pinst->conn_empty);
+            break;
+        }
+        socklen_t len = sizeof(pinst->conn_data.addr);
+        pinst->conn_data.fd = accept(pinst->listen_fd,
+                (struct sockaddr *) &pinst->conn_data.addr, &len);
+        if (pinst->conn_data.fd < 0) {
+            ehttpd_semaphore_give(pinst->conn_empty);
+            EHTTPD_LOGE(__func__, "accept failed");
+            continue;
+        }
+        ehttpd_semaphore_give(pinst->conn_full);
     }
 
-    char ipstr[16];
-    struct sockaddr_in *sa = (struct sockaddr_in *) &posix_conn->addr;
-    inet_ntop(AF_INET, &sa->sin_addr, ipstr, sizeof(ipstr));
-    EHTTPD_LOGD(__func__, "new connection from %s:%d%s %p", ipstr,
-            ntohs(sa->sin_port), posix_inst->flags & EHTTPD_FLAG_TLS ?
-            " TLS" : "", posix_conn);
+cleanup:
+    close(pinst->listen_fd);
 
-    int keepAlive = 1;
-    int keepIdle = 60;
-    int keepInterval = 5;
-    int keepCount = 3;
-    int nodelay = 0;
+    if (pinst->flags & EHTTPD_FLAG_TLS && pinst->ssl) {
+#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+        mbedtls_x509_crt_free(&pinst->ssl->cert);
+        mbedtls_pk_free(&pinst->ssl->pkey);
+        mbedtls_ssl_config_free(&pinst->ssl->conf);
+        mbedtls_ctr_drbg_free(&pinst->ssl->ctr_drbg);
+        mbedtls_entropy_free(&pinst->ssl->entropy);
+        free(pinst->ssl);
+#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
+        SSL_CTX_free(pinst->ssl);
+#endif
+    }
+
+    ehttpd_thread_t *thread = pinst->thread;
+    ehttpd_destroy(&pinst->inst);
+    ehttpd_thread_delete(thread);
+}
+
+
+/************************
+ * \section Worker Task
+ ************************/
+
+static void worker_task(void *arg)
+{
+    posix_conn_t *pconn = conn_to_pconn(arg);
+    posix_inst_t *pinst = inst_to_pinst(pconn->conn.inst);
+
+    while (true) {
+        while (!pinst->shutdown) {
+            if (ehttpd_semaphore_take(pinst->conn_full, 250)) {
+                break;
+            }
+
+        }
+        if (pinst->shutdown) {
+            ehttpd_semaphore_give(pinst->conn_full);
+            break;
+        }
+        pinst->num_connections++;
+        if (pinst->num_connections == CONFIG_EHTTPD_WORKER_COUNT) {
+            pconn->conn.priv.flags |= HFL_REQUEST_CLOSE;
+        }
+        memcpy(&pconn->conn_data, &pinst->conn_data, sizeof(pconn->conn_data));
+        ehttpd_semaphore_give(pinst->conn_empty);
+
+        char ipstr[16];
+        inet_ntop(AF_INET, &pconn->conn_data.addr.sin_addr, ipstr,
+                sizeof(ipstr));
+        EHTTPD_LOGD(__func__, "new connection from %s:%d%s %p", ipstr,
+                ntohs(pconn->conn_data.addr.sin_port),
+                pinst->flags & EHTTPD_FLAG_TLS ? " TLS" : "", pconn);
+
+        int keepAlive = 1;
+        int keepIdle = 60;
+        int keepInterval = 5;
+        int keepCount = 3;
+        int nodelay = 0;
 #if defined(CONFIG_EHTTPD_TCP_NODELAY)
-    nodelay = 1;  // enable TCP_NODELAY to speed-up transfers of small files.
-                  // See Nagle's Algorithm.
+        nodelay = 1; // enable TCP_NODELAY to speed-up transfers of small
+                     // files. See Nagle's Algorithm.
 #endif
 
-    setsockopt(posix_conn->fd, SOL_SOCKET, SO_KEEPALIVE,
-            (void *) &keepAlive, sizeof(keepAlive));
-    setsockopt(posix_conn->fd, IPPROTO_TCP, TCP_KEEPIDLE,
-            (void *) &keepIdle, sizeof(keepIdle));
-    setsockopt(posix_conn->fd, IPPROTO_TCP, TCP_KEEPINTVL,
-            (void *) &keepInterval, sizeof(keepInterval));
-    setsockopt(posix_conn->fd, IPPROTO_TCP, TCP_KEEPCNT,
-            (void *) &keepCount, sizeof(keepCount));
-    setsockopt(posix_conn->fd, IPPROTO_TCP, TCP_NODELAY,
-            (void *) &nodelay, sizeof(nodelay));
+        setsockopt(pconn->conn_data.fd, SOL_SOCKET, SO_KEEPALIVE,
+                (void *) &keepAlive, sizeof(keepAlive));
+        setsockopt(pconn->conn_data.fd, IPPROTO_TCP, TCP_KEEPIDLE,
+                (void *) &keepIdle, sizeof(keepIdle));
+        setsockopt(pconn->conn_data.fd, IPPROTO_TCP, TCP_KEEPINTVL,
+                (void *) &keepInterval, sizeof(keepInterval));
+        setsockopt(pconn->conn_data.fd, IPPROTO_TCP, TCP_KEEPCNT,
+                (void *) &keepCount, sizeof(keepCount));
+        setsockopt(pconn->conn_data.fd, IPPROTO_TCP, TCP_NODELAY,
+                (void *) &nodelay, sizeof(nodelay));
 
-    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
+        if (pinst->flags & EHTTPD_FLAG_TLS) {
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        mbedtls_ssl_init(&posix_conn->ssl);
+            mbedtls_ssl_init(&pconn->ssl);
 
-        int ret = mbedtls_ssl_setup(&posix_conn->ssl, &posix_inst->ssl->conf);
-        if (ret != 0) {
-            EHTTPD_LOGE(__func__, "mbedtls_ssl_setup %d", ret);
-            goto err;
-        }
+            int ret = mbedtls_ssl_setup(&pconn->ssl,
+                    &pinst->ssl->conf);
+            if (ret != 0) {
+                EHTTPD_LOGE(__func__, "mbedtls_ssl_setup %d", ret);
+                close(pconn->conn_data.fd);
+                continue;
+            }
 
-        mbedtls_ssl_set_bio(&posix_conn->ssl, &posix_conn->fd,
-                mbedtls_net_send, mbedtls_net_recv, NULL);
+            mbedtls_ssl_set_bio(&pconn->ssl, &pconn->conn_data.fd,
+                    mbedtls_net_send, mbedtls_net_recv, NULL);
 
-        while ((ret = mbedtls_ssl_handshake(&posix_conn->ssl)) != 0) {
-            if ((ret != MBEDTLS_ERR_SSL_WANT_READ) &&
-                    (ret != MBEDTLS_ERR_SSL_WANT_WRITE)) {
+            while ((ret = mbedtls_ssl_handshake(&pconn->ssl)) != 0) {
+                if (ret == MBEDTLS_ERR_SSL_WANT_READ) {
+                    EHTTPD_LOGD(__func__, "MBEDTLS_ERR_SSL_WANT_READ %p",
+                            pconn);
+                    continue;
+                }
+                if (ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
+                    EHTTPD_LOGD(__func__, "MBEDTLS_ERR_SSL_WANT_WRITE %p",
+                            pconn);
+                    continue;
+                }
                 EHTTPD_LOGE(__func__, "mbedtls_ssl_handshake %d", ret);
-                goto err;
+                break;
             }
-        }
+            if (ret != 0) {
+                mbedtls_ssl_free(&pconn->ssl);
+                close(pconn->conn_data.fd);
+                continue;
+            }
+
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        posix_conn->ssl = SSL_new(posix_inst->ssl);
-        if (posix_conn->ssl == NULL) {
-            EHTTPD_LOGE(__func__, "SSL_new");
-            goto err;
-        }
+            pconn->ssl = SSL_new(pinst->ssl);
+            if (pconn->ssl == NULL) {
+                EHTTPD_LOGE(__func__, "SSL_new");
+                close(pconn->conn_data.fd);
+                continue;
+            }
 
-        SSL_set_fd(posix_conn->ssl, posix_conn->fd);
+            SSL_set_fd(pconn->ssl, pconn->conn_data.fd);
 
-        enter_critical();
-        int ret = SSL_accept(posix_conn->ssl);
-        exit_critical();
-        if (ret <= 0) {
-            ret = SSL_get_error(posix_conn->ssl, ret);
-            EHTTPD_LOGE(__func__, "SSL_accept %d", ret);
-            goto err;
-        }
+            int ret = SSL_accept(pconn->ssl);
+            if (ret <= 0) {
+                ret = SSL_get_error(pconn->ssl, ret);
+                EHTTPD_LOGE(__func__, "SSL_accept %d", ret);
+                close(pconn->conn_data.fd);
+                SSL_free(pconn->ssl);
+                continue;
+            }
 #endif
-    }
+        }
 
-    posix_conn->conn.inst = &posix_inst->inst;
-    posix_conn->conn.priv.flags |= HFL_NEW_CONN;
+        ehttpd_new_conn_cb(&pconn->conn);
 
-    return;
-
-err:
-    if (posix_conn->fd >= 0) {
-        close(posix_conn->fd);
-    }
+        if (!pconn->error) {
+            if (pinst->flags & EHTTPD_FLAG_TLS) {
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-    mbedtls_ssl_free(&posix_conn->ssl);
+                int ret;
+                while ((ret = mbedtls_ssl_close_notify(&pconn->ssl)) < 0) {
+                    EHTTPD_LOGE(__func__, "mbedtls_ssl_close_notify %d", ret);
+                    break;
+                }
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-    SSL_free(posix_conn->ssl);
+                int ret = SSL_shutdown(pconn->ssl);
+                if (ret == 0) {
+                    return;
+                } else if (ret < 0) {
+                    EHTTPD_LOGE(__func__, "SSL_shutdown %d", ret);
+                }
 #endif
-    posix_conn->fd = -1;
-}
+            }
 
-static void write_event(posix_conn_t *posix_conn)
-{
-    if (posix_conn->need_write) {
-        posix_conn->need_write = false;
-        if (ehttpd_sent_cb(&posix_conn->conn) != EHTTPD_CB_SUCCESS) {
-            close_connection(&posix_conn->conn, true);
+            shutdown(pconn->conn_data.fd, SHUT_RDWR);
         }
-    }
-    if (posix_conn->need_close) {
-        close_connection(&posix_conn->conn, true);
-    }
-}
 
-static void read_event(posix_conn_t *posix_conn)
-{
-    posix_inst_t *posix_inst = inst_to_posix(posix_conn->conn.inst);
-    ssize_t ret = -1;
-
-    if (posix_inst->flags & EHTTPD_FLAG_TLS) {
+        close(pconn->conn_data.fd);
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
-        ret = mbedtls_ssl_read(&posix_conn->ssl, posix_inst->buf,
-                CONFIG_EHTTPD_RECVBUF_SIZE);
-        if (ret <= 0) {
-            if (ret == 0) {
-                /* do nothing */;
-            } else if ((ret == MBEDTLS_ERR_SSL_WANT_READ) ||
-                    (ret == MBEDTLS_ERR_SSL_WANT_WRITE)) {
-                return;
-            } else if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
-                /* do nothing */
-            } else if (ret == MBEDTLS_ERR_NET_CONN_RESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer");
-            } else {
-                EHTTPD_LOGE(__func__, "mbedtls error: %d", ret);
-            }
-            close_connection(&posix_conn->conn, false);
-            return;
-        }
+        mbedtls_ssl_free(&pconn->ssl);
 #elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        // select() does not detect all available data, this
-        // re-read approach resolves an issue where data is stuck in
-        // TLS internal buffers
-        do {
-            enter_critical();
-            ret = SSL_read(posix_conn->ssl, posix_inst->buf,
-                    CONFIG_EHTTPD_RECVBUF_SIZE);
-            exit_critical();
-            if (ret < 0) {
-                int ret = SSL_get_error(posix_conn->ssl, ret);
-                EHTTPD_LOGE(__func__, "SSL_read %d", ret);
-                close_connection(&posix_conn->conn, false);
-                return;
-            } else if (ret == 0) {
-                close_connection(&posix_conn->conn, false);
-                return;
-            }
-
-            if (ehttpd_recv_cb(&posix_conn->conn, posix_inst->buf, ret) !=
-                    EHTTPD_CB_SUCCESS) {
-                close_connection(&posix_conn->conn, true);
-            }
-        } while (SSL_has_pending(posix_conn->ssl));
-        return;
+        SSL_free(pconn->ssl);
 #endif
-    } else {
-        ret = recv(posix_conn->fd, posix_inst->buf,
-                CONFIG_EHTTPD_RECVBUF_SIZE, 0);
-        if (ret < 0) {
-            if (errno == ECONNRESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer");
-                close_connection(&posix_conn->conn, false);
-                return;
-            }
-            EHTTPD_LOGE(__func__, "recv error %d", errno);
-            close_connection(&posix_conn->conn, false);
-            return;
-        } else if (ret == 0) {
-            close_connection(&posix_conn->conn, false);
-            return;
-        }
+
+        EHTTPD_LOGD(__func__, "disconnected %p", pconn);
+
+        pinst->num_connections--;
+
+        /* Recycle the conn */
+        ehttpd_thread_t *thread = pconn->thread;
+        memset(pconn, 0, sizeof(*pconn));
+        pconn->conn.inst = &pinst->inst;
+        pconn->thread = thread;
     }
 
-    if (ehttpd_recv_cb(&posix_conn->conn, posix_inst->buf, ret) !=
-            EHTTPD_CB_SUCCESS) {
-        close_connection(&posix_conn->conn, true);
-    }
+    ehttpd_semaphore_give(pinst->shutdown);
+    ehttpd_thread_delete(pconn->thread);
 }

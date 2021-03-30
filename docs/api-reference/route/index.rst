@@ -6,7 +6,6 @@ Routes
 .. toctree::
    :maxdepth: 2
 
-   general
    fs
    espfs
    redirect

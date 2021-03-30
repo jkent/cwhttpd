@@ -13,8 +13,3 @@ Type Definitions
 ^^^^^^^^^^^^^^^^
 
 .. doxygentypedef:: ehttpd_auth_account_cb_t
-
-Macros
-^^^^^^
-
-.. doxygendefine:: EHTTPD_ROUTE_AUTH

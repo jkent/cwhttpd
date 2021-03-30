@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 
 /**
@@ -15,13 +16,7 @@
 # define CONFIG_EHTTPD_MAX_REQUEST_SIZE 1024
 #endif
 
-/**
- * \brief Max send buffer size.
- */
-#ifndef CONFIG_EHTTPD_SENDBUF_SIZE
-# define CONFIG_EHTTPD_SENDBUF_SIZE 2048
-#endif
-
+typedef struct ehttpd_conn_t ehttpd_conn_t;
 typedef struct ehttpd_conn_priv_t ehttpd_conn_priv_t;
 
 // Struct to keep extension->mime data in
@@ -51,28 +46,30 @@ static const mime_map_t mime_types[] = {
 
 // Flags
 enum {
-    HFL_NEW_CONN            = (1 << 0),
-    HFL_REQUEST_STARTED     = (1 << 1),
-    HFL_REQUEST_CLOSE       = (1 << 2),
-    HFL_SEND_CHUNKED        = (1 << 3),
-    HFL_CLOSE_AFTER_SENT    = (1 << 4),
+    HFL_REQUEST_CLOSE       = (1 << 0),
+    HFL_SEND_CHUNKED        = (1 << 1),
+    HFL_SENDING_HEADER      = (1 << 2),
+    HFL_SENDING_CHUNK       = (1 << 3),
+    HFL_CLOSE               = (1 << 4),
 
     HFL_RECEIVED_HTTP11     = (1 << 8),
     HFL_RECEIVED_CONN_CLOSE = (1 << 9),
     HFL_RECEIVED_CONN_ALIVE = (1 << 10),
 
-    HFL_SENT_HEADERS        = (1 << 16),
-    HFL_SENT_CONTENT_LENGTH = (1 << 17),
-    HFL_SENT_CONN_CLOSE     = (1 << 18),
+    HFL_SENT_RESPONSE       = (1 << 16),
+    HFL_SENT_HEADERS        = (1 << 17),
+    HFL_SENT_CONTENT_LENGTH = (1 << 18),
+    HFL_SENT_FINAL_CHUNK    = (1 << 19),
+    HFL_SENT_CONN_CLOSE     = (1 << 20),
 };
 
 /**
  * \brief Private data for HTTP connection
  */
 struct ehttpd_conn_priv_t {
-    char request[CONFIG_EHTTPD_MAX_REQUEST_SIZE]; /**< request and header data */
-    uint8_t sendbuf[CONFIG_EHTTPD_SENDBUF_SIZE]; /**< send buffer */
-    size_t sendbuf_len; /**< length of send buffer */
-    uint8_t *chunk_start; /**< points to a location in sendbuf */
+    char req[CONFIG_EHTTPD_MAX_REQUEST_SIZE]; /**< request and header data */
+    char *data;
+    size_t req_len;
+    size_t chunk_left;
     uint32_t flags; /**< connection state */
 };

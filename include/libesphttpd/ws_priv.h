@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include "libesphttpd/port.h"
+
+
 typedef struct ehttpd_ws_priv_t ehttpd_ws_priv_t;
 typedef struct ehttpd_ws_frame_t ehttpd_ws_frame_t;
 typedef struct ehttpd_ws_t ehttpd_ws_t;
@@ -16,19 +19,6 @@ struct ehttpd_ws_frame_t {
 };
 
 struct ehttpd_ws_priv_t {
-    ehttpd_ws_frame_t fr;
-    uint8_t mask_ctr;
-    uint8_t frame_cont;
-    uint8_t closed;
-    int status;
+    ehttpd_ws_frame_t frame;
     ehttpd_ws_t *next; // in linked list
 };
-
-/**
- * \brief Receive function, for internal use
- */
-ehttpd_status_t ehttpd_ws_recv(
-    ehttpd_conn_t *conn, /** [in] httpd connection instance */
-    void *buf, /** [in] bytes */
-    int len /** [in] data length */
-);

@@ -49,9 +49,11 @@ extern "C" {
 
 typedef struct ehttpd_route_t ehttpd_route_t;
 typedef struct ehttpd_inst_t ehttpd_inst_t;
+typedef struct ehttpd_request_t ehttpd_request_t;
 typedef struct ehttpd_conn_t ehttpd_conn_t;
 typedef struct ehttpd_post_t ehttpd_post_t;
 typedef struct espfs_fs_t espfs_fs_t;
+typedef struct ehttpd_method_entry_t ehttpd_method_entry_t;
 
 typedef enum ehttpd_flags_t ehttpd_flags_t;
 typedef enum ehttpd_status_t ehttpd_status_t;
@@ -70,9 +72,9 @@ typedef void (*ehttpd_timer_handler_t)(void *arg);
 
 enum ehttpd_flags_t {
     EHTTPD_FLAG_NONE                = 0,
-    EHTTPD_FLAG_TLS                 = (1 << 0),
-    EHTTPD_FLAG_MANAGED_CONN_BUF    = (1 << 1),
+    EHTTPD_FLAG_TLS                 = (1 << 0)
 };
+
 
 /**
  * \brief A struct that describes a route
@@ -93,32 +95,23 @@ typedef struct ehttpd_route_t {
  * This struct is shared between all connections.
  */
 struct ehttpd_inst_t {
-    ehttpd_route_t *route_head; /** head of route linked list */
-    ehttpd_route_t *route_tail; /** tail of route linked list */
-    size_t num_routes; /** number of routes */
+    ehttpd_route_t *route_head; /**< head of route linked list */
+    ehttpd_route_t *route_tail; /**< tail of route linked list */
+    size_t num_routes; /**< number of routes */
     espfs_fs_t *espfs; /**< \a espfs_fs_t instance */
     void *user; /**< user data */
 };
 
+
 /**
- * \brief Create an esphttpd instance
+ * \brief Create a httpd instance
  *
  * \return httpd instance or NULL on error
  */
 ehttpd_inst_t *ehttpd_init(
     const char *addr, /** [in] bind address:port, or if NULL, 0.0.0.0:80 or
                                0.0.0.0:443 depending on TLS */
-    void *conn_buf, /** [in] buffer for connection data, or NULL for
-                             automatically managed */
-    size_t conn_max, /** [in] max number of concurrent connections */
     ehttpd_flags_t flags /** [in] configuration flags */
-);
-
-/**
- * \brief Return the size in bytes needed for ``conn_max`` connections
- */
-size_t ehttpd_get_conn_buf_size(
-    size_t conn_max /** [in] max number of concurrent connections */
 );
 
 /**
@@ -129,8 +122,8 @@ void ehttpd_route_vinsert(
     ssize_t index, /** [in] index of route entry, can be negative */
     const char *path, /** [in] path expression for this route */
     ehttpd_route_handler_t handler, /** [in] route handler function */
-    size_t argc, /** argument count */
-    va_list args /** arguments */
+    size_t argc, /** [in] argument count */
+    va_list args /** [in] arguments */
 );
 
 /**
@@ -141,8 +134,8 @@ void ehttpd_route_insert(
     ssize_t index, /** [in] index of route entry, can be negative */
     const char *path, /** [in] path expression for this route */
     ehttpd_route_handler_t handler, /** [in] route handler function */
-    size_t argc, /** argument count */
-    ... /** arguments */
+    size_t argc, /** [in] argument count */
+    ... /** [in] arguments */
 );
 
 /**
@@ -152,8 +145,8 @@ void ehttpd_route_append(
     ehttpd_inst_t *inst, /** [in] httpd instance */
     const char *path, /** [in] path expression for this route */
     ehttpd_route_handler_t handler, /** [in] route handler function */
-    size_t argc, /** argument count */
-    ... /** arguments */
+    size_t argc, /** [in] argument count */
+    ... /** [in] arguments */
 );
 
 /**
@@ -174,29 +167,6 @@ void ehttpd_route_remove(
     ssize_t index /** [in] index of route entry, can be negative */
 );
 
-/**
- * \brief Start the httpd server
- *
- * \return **true** on sucess or **false** on error
- */
-bool ehttpd_start(
-    ehttpd_inst_t *inst /** [in] httpd instance */
-);
-
-/**
- * \brief Lock the instance mutex
- */
-void ehttpd_lock(
-    ehttpd_inst_t *inst /** [in] httpd instance */
-);
-
-/**
- * \brief Unlock the instance mutex
- */
-void ehttpd_unlock(
-    ehttpd_inst_t *inst /** [in] httpd instance */
-);
-
 #if defined(CONFIG_EHTTPD_TLS_MBEDTLS) || defined(CONFIG_EHTTPD_TLS_OPENSSL)
 /**
  * \brief Set the ssl certificate and private key (in DER format)
@@ -206,8 +176,7 @@ void ehttpd_unlock(
  *
  * This requires **EHTTPD_SSL_MBEDTLS** or **EHTTPD_SSL_OPENSSL**.
  *
- * This must be called before :c:func:`ehttpd_start()` if ``inst`` has
- * **EHTTPD_FLAG_TLS** set.
+ * This should be called before :c:func:`ehttpd_start()`.
  *
  * \endverbatim */
 void ehttpd_set_cert_and_key(
@@ -221,14 +190,10 @@ void ehttpd_set_cert_and_key(
 /**
  * \brief Enable or disable client certificate verification
  *
- * \note
- * \verbatim embed:rst:leading-asterisk
- *
- * This requires **EHTTPD_SSL_MBEDTLS** or **EHTTPD_SSL_OPENSSL**.
+ * \note This requires **EHTTPD_SSL_MBEDTLS** or **EHTTPD_SSL_OPENSSL**.
  *
  * This is disabled by default.
- *
- * \endverbatim */
+ */
 void ehttpd_set_client_validation(
     ehttpd_inst_t *inst, /** [in] httpd instance */
     bool enable /** [in] true or false */
@@ -253,14 +218,21 @@ void ehttpd_add_client_cert(
 );
 #endif /* CONFIG_EHTTPD_TLS_OPENSSL */
 
-#ifdef CONFIG_EHTTPD_USE_SHUTDOWN
 /**
- * \brief Shutdown httpd instance
+ * \brief Start a httpd instance
+ *
+ * \return true on success
  */
-void ehttpd_shutdown(
+bool ehttpd_start(
     ehttpd_inst_t *inst /** [in] httpd instance */
 );
-#endif /* CONFIG_EHTTPD_USE_SHUTDOWN */
+
+/**
+ * \brief Shutdown and delete httpd instance
+ */
+void ehttpd_destroy(
+    ehttpd_inst_t *inst /** [in] httpd instance */
+);
 
 
 /***********************
@@ -268,21 +240,35 @@ void ehttpd_shutdown(
  ***********************/
 
 enum ehttpd_status_t {
+    EHTTPD_STATUS_OK,
     EHTTPD_STATUS_NOTFOUND,
-    EHTTPD_STATUS_FOUND,
+    EHTTPD_STATUS_AUTHENTICATED,
     EHTTPD_STATUS_MORE,
     EHTTPD_STATUS_DONE,
-    EHTTPD_STATUS_AUTHENTICATED,
+    EHTTPD_STATUS_CLOSE,
+    EHTTPD_STATUS_FAIL,
 };
 
+/* This enum must be kept in sync with the ehttpd_methods list in httpd.c */
 enum ehttpd_method_t {
-    EHTTPD_METHOD_UNKNOWN,
     EHTTPD_METHOD_GET,
     EHTTPD_METHOD_POST,
     EHTTPD_METHOD_OPTIONS,
     EHTTPD_METHOD_PUT,
     EHTTPD_METHOD_PATCH,
     EHTTPD_METHOD_DELETE,
+    EHTTPD_METHOD_UNKNOWN,
+};
+
+/**
+ * \brief HTTP request data
+ */
+struct ehttpd_request_t {
+    ehttpd_method_t method; /**< request method */
+    const char *url; /**< URL without arguments */
+    char *args; /**< URL arguments */
+    char *headers; /**< the start of the headers */
+    const char *hostname; /**< hostname header value */
 };
 
 /**
@@ -290,16 +276,10 @@ enum ehttpd_method_t {
  */
 struct ehttpd_conn_t {
     ehttpd_inst_t *inst; /**< HTTP server instance */
-    ehttpd_method_t method; /**< request method */
-    const char *url; /**< the URL request without GET arguments */
-    char *args; /**< the URL arguments */
-    char *headers; /**< the start of the headers */
-    const char *hostname; /**< hostname field */
+    ehttpd_request_t request; /**< HTTP request data */
     ehttpd_post_t *post; /**< POST/PUT data */
     const ehttpd_route_t *route; /**< the route */
-    ehttpd_recv_handler_t recv_handler; /**< body recv handler */
     void *user;  /**< user data */
-    bool closed; /**< closed indicator for routes */
     ehttpd_conn_priv_t priv; /**< internal data */
 };
 
@@ -315,6 +295,70 @@ struct ehttpd_post_t {
 };
 
 /**
+ * \brief Return if connection is SSL or not
+ *
+ * \return true if SSL, false if not
+ */
+bool ehttpd_plat_is_ssl(
+    ehttpd_conn_t *conn /** [in] connection instance */
+);
+
+/**
+ * \brief Receive data over connection
+ *
+ * \return number of bytes that were actually read, or -1 on error
+ */
+ssize_t ehttpd_plat_recv(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    void *buf, /** [out] bytes */
+    size_t len /** [in] data length */
+);
+
+/**
+ * \brief Send data over connection
+ *
+ * \return number of bytes that were actually written, or -1 on error
+ */
+ssize_t ehttpd_plat_send(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const void *buf, /** [in] bytes */
+    size_t len /** [in] data length */
+);
+
+/**
+ * \brief Receive data over connection, using req data first if available
+ *
+ * \return number of bytes that were actually read, or -1 on error
+ */
+ssize_t ehttpd_recv(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    void *buf, /** [in] bytes */
+    size_t len /** [in] number of bytes to recv */
+);
+
+/**
+ * \brief Send data over connection
+ *
+ * \return number of bytes that were actually written, or -1 on error
+ */
+ssize_t ehttpd_send(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const void *buf, /** [in] bytes */
+    ssize_t len /** [out] number of bytes to send or -1 for strlen */
+);
+
+/**
+ * \brief Send data over connection using a format string
+ *
+ * \return number of bytes that were actually written, or -1 on error
+ */
+ssize_t ehttpd_sendf(
+    ehttpd_conn_t *conn, /** [in] connection instance */
+    const char *fmt, /** [in] format string */
+    ... /** [in] format arguments */
+);
+
+/**
  * \brief Get the value of a header in the connection's head buffer
  *
  * \return header value if found, NULL otherwise
@@ -327,9 +371,9 @@ const char *ehttpd_get_header(
 /**
  * \brief Set chunked HTTP transfer mode
  *
- * You should call this before calling ehttpd_start_response.
+ * \note You should call this before calling ehttpd_response.
  */
-void ehttpd_set_chunked_encoding(
+void ehttpd_set_chunked(
     ehttpd_conn_t *conn, /** [in] connection instance */
     bool enable /** [in] true for chunked */
 );
@@ -337,7 +381,7 @@ void ehttpd_set_chunked_encoding(
 /**
  * \brief Set connection closed header
  *
- * You should call this before ehttpd_start_response.
+ * \note You should call this before ehttpd_response.
  */
 void ehttpd_set_close(
     ehttpd_conn_t *conn, /** [in] connection instance */
@@ -345,141 +389,52 @@ void ehttpd_set_close(
 );
 
 /**
- * \brief Enqueue the response headers
+ * \brief Start a http response
+ *
+ * \return bytes sent or -1 on error
  */
-void ehttpd_start_response(
+ssize_t ehttpd_response(
     ehttpd_conn_t *conn, /** [in] connection instance */
     int code /** [in] HTTP status code */
 );
 
 /**
- * \brief Enqueue a custom HTTP header
+ * \brief Send a custom HTTP header
+ *
+ * \return bytes sent or -1 on error
  */
-void ehttpd_header(
+ssize_t ehttpd_send_header(
     ehttpd_conn_t *conn, /** [in] connection instance */
     const char *name, /** [in] header name */
     const char *value /** [in] header value */
 );
 
 /**
- * \brief End the header section and start the message body
+ * \brief Send a sensible cache control header
+ *
+ * \return bytes sent or -1 on error
  */
-void ehttpd_end_headers(
-    ehttpd_conn_t *conn /** [in] connection instance */
-);
-
-/**
- * \brief Enqueue sensible cache control headers
- */
-void ehttpd_add_cache_header(
+ssize_t ehttpd_send_cache_header(
     ehttpd_conn_t *conn, /** [in] connection instance */
     const char *mime /** [in] mime type */
 );
 
 /**
- * \brief Ready the send buffer for data
+ * \brief Start a chunk with given length
  *
- * \return free space in buffer or -1 if required lenght not met
+ * \return bytes sent or -1 on error
  */
-ssize_t ehttpd_prepare(
+ssize_t ehttpd_chunk_start(
     ehttpd_conn_t *conn, /** [in] connection instance */
-    void **buf, /** [out] buffer start */
-    size_t len /** [in] required length */
+    size_t len /** [in] chunk length in bytes */
 );
 
 /**
- * \brief Add data to send buffer
+ * \brief End a chunk
  *
- * \note If the lengh of the data exceeds the free space in the send buffer,
- * no data is written to the buffer.
- *
- * \return true if sucessful or false if the buffer does not have enough space
+ * \return bytes sent or -1 on error
  */
-bool ehttpd_enqueue(
-    ehttpd_conn_t *conn, /** [in] connection instance */
-    const void *buf, /** [in] data to add */
-    ssize_t len /** [in] data length or -1 for strlen() */
-);
-
-/**
- * \brief Add formatted text to send buffer
- *
- * \note If the lengh of the data exceeds the free space in the send buffer,
- * no data is written to the buffer.
- *
- * \return true if sucessful or false if the buffer does not have enough space
- */
-bool ehttpd_enqueuef(
-    ehttpd_conn_t *conn, /** [in] connection instance */
-    const char *fmt, /** [in] format string */
-    ... /** [in] args */
-);
-
-/**
- * \brief Encode html entities and add to the send buffer
- *
- * \note If the lengh of the data exceeds the free space in the send buffer,
- * no data is written to the buffer.
- *
- * \return true if sucessful or false if the buffer does not have enough space
- */
-bool ehttpd_enqueue_html(
-    ehttpd_conn_t *conn, /** [in] connection instance */
-    const char *buf, /** [in] data to add */
-    ssize_t len /** [in] data length or -1 for strlen() */
-);
-
-/**
- * \brief Encode javascript and add to the send buffer
- *
- * \note If the lengh of the data exceeds the free space in the send buffer,
- * no data is written to the buffer.
- *
- * \return true if sucessful or false if the buffer does not have enough space
- */
-bool ehttpd_enqueue_js(
-    ehttpd_conn_t *conn, /** [in] connection instance */
-    const char *data, /** [in] data to add */
-    ssize_t len /** [in] data length or -1 for strlen() */
-);
-
-/**
- * \brief Flush the send buffer
- */
-void ehttpd_flush(
-    ehttpd_conn_t *conn /** [in] connection instance */
-);
-
-/**
- * \brief Return if connection is SSL or not
- *
- * \return true if SSL, false if not
- *
- * \note This function implementation is platform defined
- */
-bool ehttpd_is_ssl(
-    ehttpd_conn_t *conn /** [in] connection instance */
-);
-
-/**
- * \brief Send data over connection
- *
- * \return number of bytes that were actually written, or -1 on error
- *
- * \note This function implementation is platform defined
- */
-ssize_t ehttpd_send(
-    ehttpd_conn_t *conn, /** [in] connection instance */
-    void *buf, /** [in] bytes */
-    size_t len /** [in] data length */
-);
-
-/**
- * \brief Schedule a connection for close
- *
- * \note This function implementation is platform defined
- */
-void ehttpd_disconnect(
+ssize_t ehttpd_chunk_end(
     ehttpd_conn_t *conn /** [in] connection instance */
 );
 
@@ -487,6 +442,15 @@ void ehttpd_disconnect(
 /********************
  * \section Utility
  ********************/
+
+/**
+ * \brief 404 not found handler
+ *
+ * \note this function is defined \_\_weak\_\_ so you can override it.
+ */
+ehttpd_status_t ehttpd_route_404(
+    ehttpd_conn_t *conn
+);
 
 /**
  * \brief Send a redirect response

@@ -70,9 +70,9 @@ ehttpd_status_t ehttpd_route_fw_get_next(ehttpd_conn_t *conn)
     }
     //Doesn't matter, we have a MMU to remap memory, so we only have one firmware image.
     uint8_t id = 0;
-    ehttpd_start_response(conn, 200);
-    ehttpd_header(conn, "Content-Type", "text/plain");
-    ehttpd_header(conn, "Content-Length", "9");
+    ehttpd_response(conn, 200);
+    ehttpd_send_header(conn, "Content-Type", "text/plain");
+    ehttpd_send_header(conn, "Content-Length", "9");
     ehttpd_end_headers(conn);
     const char *next = id == 1 ? "user1.bin" : "user2.bin";
     ehttpd_send(conn, (uint8_t *) next, -1);
@@ -121,10 +121,10 @@ static void json_response(ehttpd_conn_t *conn, cJSON *jsroot){
 
     //// Generate the header
     //We want the header to start with HTTP code 200, which means the document is found.
-    ehttpd_start_response(conn, 200);
-    ehttpd_header(conn, "Cache-Control", "no-store, must-revalidate, no-cache, max-age=0");
-    ehttpd_header(conn, "Expires", "Mon, 01 Jan 1990 00:00:00 GMT");  //  This one might be redundant, since modern browsers look for "Cache-Control".
-    ehttpd_header(conn, "Content-Type", "application/json; charset=utf-8"); //We are going to send some JSON.
+    ehttpd_response(conn, 200);
+    ehttpd_send_header(conn, "Cache-Control", "no-store, must-revalidate, no-cache, max-age=0");
+    ehttpd_send_header(conn, "Expires", "Mon, 01 Jan 1990 00:00:00 GMT");  //  This one might be redundant, since modern browsers look for "Cache-Control".
+    ehttpd_send_header(conn, "Content-Type", "application/json; charset=utf-8"); //We are going to send some JSON.
     ehttpd_end_headers(conn);
     json_string = cJSON_Print(jsroot);
     if (json_string) {
