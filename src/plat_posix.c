@@ -11,11 +11,10 @@
 #include "libesphttpd/httpd.h"
 #include "libesphttpd/port.h"
 
-#if defined(FREERTOS) || defined(CONFIG_IDF_TARGET_ESP8266) || \
-    defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 # include <freertos/FreeRTOS.h>
 # include <freertos/task.h>
-#endif
+#endif /* defined(ESP_PLATFORM) */
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -27,11 +26,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 # include <lwip/sockets.h>
-#endif
+#endif /* defined(ESP_PLATFORM) */
 
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
 # include <mbedtls/platform.h>
 # include <mbedtls/entropy.h>
 # include <mbedtls/ctr_drbg.h>
@@ -40,11 +39,6 @@
 # include <mbedtls/ssl.h>
 # include <mbedtls/net_sockets.h>
 # include <mbedtls/error.h>
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-# include <openssl/ssl.h>
-# if !defined(CONFIG_IDF_TARGET_ESP8266) && !defined(ESP_PLATFORM)
-#  include <openssl/err.h>
-# endif
 #endif
 
 #pragma GCC diagnostic ignored "-Wunused-label"
@@ -86,7 +80,7 @@
 
 typedef struct posix_conn_t posix_conn_t;
 typedef struct posix_inst_t posix_inst_t;
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
 typedef struct SSL_CTX SSL_CTX;
 
 struct SSL_CTX {
@@ -96,7 +90,7 @@ struct SSL_CTX {
     mbedtls_x509_crt cert;
     mbedtls_pk_context pkey;
 };
-#endif
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
 typedef struct conn_data_t {
     int fd;
@@ -108,11 +102,9 @@ struct posix_conn_t {
     ehttpd_thread_t *thread;
     conn_data_t conn_data;
     bool error;
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     mbedtls_ssl_context ssl;
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-    SSL *ssl;
-#endif
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 };
 
 struct posix_inst_t {
@@ -131,9 +123,9 @@ struct posix_inst_t {
 
     ehttpd_semaphore_t *shutdown;
 
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS) || defined(CONFIG_EHTTPD_TLS_OPENSSL)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     SSL_CTX *ssl;
-#endif
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
     posix_conn_t pconn[CONFIG_EHTTPD_WORKER_COUNT];
 };
 
@@ -163,13 +155,11 @@ void ehttpd_destroy(ehttpd_inst_t *inst)
         ehttpd_semaphore_take(pinst->shutdown, UINT32_MAX);
     }
 
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     if (pinst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
         free(pinst->ssl);
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        SSL_CTX_free(pinst->ssl);
-#endif
     }
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
     while (pinst->inst.route_head) {
         ehttpd_route_remove(&pinst->inst, 0);
@@ -189,18 +179,18 @@ ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
     posix_inst_t *pinst =
             (posix_inst_t *) calloc(1, sizeof(posix_inst_t));
     if (pinst == NULL) {
-        EHTTPD_LOGE(__func__, "calloc");
+        LOGE(__func__, "calloc");
         return NULL;
     }
 
     pinst->flags = flags;
 
-#if defined(CONFIG_EHTTPD_TLS_NONE)
+#if !defined(CONFIG_EHTTPD_MBEDTLS)
     if (pinst->flags & EHTTPD_FLAG_TLS) {
-        EHTTPD_LOGW(__func__, "TLS support not enabled in");
+        LOGW(__func__, "TLS support not enabled in");
         pinst->flags &= ~EHTTPD_FLAG_TLS;
     }
-#endif
+#endif /* !defined(CONFIG_EHTTPD_MBEDTLS) */
 
     pinst->listen_fd = -1;
 
@@ -219,12 +209,12 @@ ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
     inet_pton(AF_INET, s, &pinst->listen_addr.sin_addr);
     free(s);
 
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     if (pinst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
         int ret;
         pinst->ssl = malloc(sizeof(SSL_CTX));
         if (pinst->ssl == NULL) {
-            EHTTPD_LOGE(__func__, "malloc");
+            LOGE(__func__, "malloc");
             goto cleanup;
         }
         mbedtls_ssl_config_init(&pinst->ssl->conf);
@@ -235,26 +225,20 @@ ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
         ret = mbedtls_ctr_drbg_seed(&pinst->ssl->ctr_drbg,
                 mbedtls_entropy_func, &pinst->ssl->entropy, NULL, 0);
         if (ret != 0) {
-            EHTTPD_LOGE(__func__, "mbedtls_ctr_drbg_seed %d", ret);
+            LOGE(__func__, "mbedtls_ctr_drbg_seed %d", ret);
             goto cleanup;
         }
         ret = mbedtls_ssl_config_defaults(&pinst->ssl->conf,
                 MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM,
                 MBEDTLS_SSL_PRESET_DEFAULT);
         if (ret != 0) {
-            EHTTPD_LOGE(__func__, "mbedtls_ssl_config_defaults %d", ret);
+            LOGE(__func__, "mbedtls_ssl_config_defaults %d", ret);
             goto cleanup;
         }
         mbedtls_ssl_conf_rng(&pinst->ssl->conf, mbedtls_ctr_drbg_random,
                 &pinst->ssl->ctr_drbg);
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        pinst->ssl = SSL_CTX_new(TLS_server_method());
-        if (pinst->ssl == NULL) {
-            EHTTPD_LOGE(__func__, "create ssl context");
-            goto cleanup;
-        }
-#endif
     }
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
     pinst->conn_empty = ehttpd_semaphore_create(1, 1);
     pinst->conn_full = ehttpd_semaphore_create(1, 0);
@@ -279,7 +263,7 @@ bool ehttpd_start(ehttpd_inst_t *inst)
     pinst->thread = ehttpd_thread_create(listener_task, pinst,
             &thread_attr);
     if (pinst->thread == NULL) {
-        EHTTPD_LOGE(__func__, "listener thread");
+        LOGE(__func__, "listener thread");
         goto err;
     }
 
@@ -293,7 +277,7 @@ bool ehttpd_start(ehttpd_inst_t *inst)
         pconn->thread = ehttpd_thread_create(worker_task, pconn,
                 &thread_attr);
         if (pconn->thread == NULL) {
-            EHTTPD_LOGE(__func__, "worker thread");
+            LOGE(__func__, "worker thread");
             goto err;
         }
     }
@@ -305,7 +289,7 @@ err:
     return false;
 }
 
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
 void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
         size_t cert_len, const void *priv_key,
         size_t priv_key_len)
@@ -313,7 +297,7 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
     posix_inst_t *pinst = inst_to_pinst(inst);
 
     if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGW(__func__, "cannot add cert to non-tls instance");
+        LOGW(__func__, "cannot add cert to non-tls instance");
         return;
     }
 
@@ -321,21 +305,21 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
     ret = mbedtls_x509_crt_parse(&pinst->ssl->cert,
             (const unsigned char *) cert, cert_len);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "cannot add cert");
+        LOGE(__func__, "cannot add cert");
         return;
     }
 
     ret = mbedtls_pk_parse_key(&pinst->ssl->pkey,
             (const unsigned char *) priv_key, priv_key_len, NULL, 0);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "cannot add private key");
+        LOGE(__func__, "cannot add private key");
         return;
     }
 
     ret = mbedtls_ssl_conf_own_cert(&pinst->ssl->conf,
             &pinst->ssl->cert, &pinst->ssl->pkey);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "cannot set cert");
+        LOGE(__func__, "cannot set cert");
     }
 }
 
@@ -344,7 +328,7 @@ void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
     posix_inst_t *pinst = inst_to_pinst(inst);
 
     if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGW(__func__, "cannot set authmode on non-tls instance");
+        LOGW(__func__, "cannot set authmode on non-tls instance");
         return;
     }
 
@@ -358,7 +342,7 @@ void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
     posix_inst_t *pinst = inst_to_pinst(inst);
 
     if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGW(__func__, "cannot add cert to non-tls instance");
+        LOGW(__func__, "cannot add cert to non-tls instance");
         return;
     }
 
@@ -366,97 +350,10 @@ void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
     ret = mbedtls_x509_crt_parse(&pinst->ssl->cert,
             (const unsigned char *) cert, cert_len);
     if (ret != 0) {
-        EHTTPD_LOGE(__func__, "cannot add cert");
+        LOGE(__func__, "cannot add cert");
     }
 }
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-static bool set_der_cert_and_key(ehttpd_inst_t *inst,
-        const void *cert, size_t cert_len,
-        const void *priv_key, size_t priv_key_len)
-{
-    posix_inst_t *pinst = inst_to_pinst(inst);
-    bool status = true;
-
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGE(__func__, "not an ssl instance");
-        return false;
-    }
-
-    int ret = SSL_CTX_use_certificate_ASN1(pinst->ssl, cert_len, cert);
-    if (ret == 0) {
-        EHTTPD_LOGE(__func__, "SSL_CTX_use_certificate_ASN1 failed: %d", ret);
-        status = false;
-    }
-
-    ret = SSL_CTX_use_RSAPrivateKey_ASN1(pinst->ssl, priv_key,
-            priv_key_len);
-    if (ret == 0) {
-        EHTTPD_LOGE(__func__, "SSL_CTX_use_RSAPrivateKey_ASN1 failed: %d",
-                ret);
-        status = false;
-    }
-
-#if !defined(CONFIG_IDF_TARGET_ESP8266) && !defined(ESP_PLATFORM)
-    if (status == false) {
-        ERR_print_errors_fp(stderr);
-    }
-#endif
-
-    return status;
-}
-
-void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
-        size_t cert_len, const void *priv_key,
-        size_t priv_key_len)
-{
-    posix_inst_t *pinst = inst_to_pinst(inst);
-
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGE(__func__, "not an ssl instance");
-        return;
-    }
-
-    if (!set_der_cert_and_key(inst, cert, cert_len,
-            priv_key, priv_key_len)) {
-        EHTTPD_LOGE(__func__, "failed");
-    }
-}
-
-void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
-{
-    posix_inst_t *pinst = inst_to_pinst(inst);
-    int flags;
-
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGE(__func__, "not an ssl instance");
-        return;
-    }
-
-    if (enable) {
-        flags = SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
-    } else {
-        flags = SSL_VERIFY_NONE;
-    }
-    SSL_CTX_set_verify(pinst->ssl, flags, NULL);
-}
-
-void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
-        size_t cert_len)
-{
-    posix_inst_t *pinst = inst_to_pinst(inst);
-
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
-        EHTTPD_LOGE(__func__, "not an ssl instance");
-        return;
-    }
-
-    X509 *client_cacert = d2i_X509(NULL, cert, cert_len);
-    int rv = SSL_CTX_add_client_CA(pinst->ssl, client_cacert);
-    if (rv == 0) {
-        EHTTPD_LOGE(__func__, "failed");
-    }
-}
-#endif
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
 
 /*********************************
@@ -480,32 +377,31 @@ ssize_t ehttpd_plat_send(ehttpd_conn_t *conn, const void *buf, size_t len)
         return 0;
     }
 
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     if (pinst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
         ret = mbedtls_ssl_write(&pconn->ssl, buf, len);
         if (ret < 0) {
             pconn->error = true;
             if (ret == MBEDTLS_ERR_NET_CONN_RESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+                LOGW(__func__, "connection reset by peer %p", pconn);
             } else if (ret < 0) {
-                EHTTPD_LOGE(__func__, "mbedtls_ssl_write %d", ret);
+                LOGE(__func__, "mbedtls_ssl_write %d", ret);
             }
         }
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        ret = SSL_write(pconn->ssl, buf, len);
-#endif
-    } else {
+    } else
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+    {
         ret = write(pconn->conn_data.fd, buf, len);
         if (ret < 0) {
             pconn->error = true;
             if (errno == ECONNRESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+                LOGW(__func__, "connection reset by peer %p", pconn);
                 return ret;
             } else if (errno == EPIPE) {
-                EHTTPD_LOGW(__func__, "broken pipe %p", pconn);
+                LOGW(__func__, "broken pipe %p", pconn);
                 return ret;
             }
-            EHTTPD_LOGE(__func__, "write %d", errno);
+            LOGE(__func__, "write %d", errno);
         }
     }
 
@@ -518,37 +414,31 @@ ssize_t ehttpd_plat_recv(ehttpd_conn_t *conn, void *buf, size_t len)
     posix_inst_t *pinst = inst_to_pinst(conn->inst);
     ssize_t ret = -1;
 
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     if (pinst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
         ret = mbedtls_ssl_read(&pconn->ssl, buf, len);
         if (ret < 0) {
             if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
                 /* do nothing */
             } else if (ret == MBEDTLS_ERR_NET_CONN_RESET) {
                 pconn->error = true;
-                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+                LOGW(__func__, "connection reset by peer %p", pconn);
             } else {
                 pconn->error = true;
-                EHTTPD_LOGE(__func__, "mbedtls error: %d", ret);
+                LOGE(__func__, "mbedtls error: %d", ret);
             }
         }
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        ret = SSL_read(pconn->ssl, buf, len);
-        if (ret < 0) {
-            pconn->error = true;
-            int err = SSL_get_error(pconn->ssl, ret);
-            EHTTPD_LOGE(__func__, "SSL_read %d", err);
-        }
-#endif
-    } else {
+    } else
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+    {
         ret = recv(pconn->conn_data.fd, buf, len, 0);
         if (ret < 0) {
             pconn->error = true;
             if (errno == ECONNRESET) {
-                EHTTPD_LOGW(__func__, "connection reset by peer %p", pconn);
+                LOGW(__func__, "connection reset by peer %p", pconn);
                 return ret;
             }
-            EHTTPD_LOGE(__func__, "recv error %d", errno);
+            LOGE(__func__, "recv error %d", errno);
         }
     }
     return ret;
@@ -565,7 +455,7 @@ static void listener_task(void *arg)
 
     pinst->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (pinst->listen_fd < 0) {
-        EHTTPD_LOGE(__func__, "failed to create socket");
+        LOGE(__func__, "failed to create socket");
         goto cleanup;
     }
 
@@ -582,18 +472,18 @@ static void listener_task(void *arg)
     if (bind(pinst->listen_fd,
             (struct sockaddr *) &pinst->listen_addr,
             sizeof(pinst->listen_addr)) < 0) {
-        EHTTPD_LOGE(__func__, "unable to bind to TCP %s:%d", buf,
+        LOGE(__func__, "unable to bind to TCP %s:%d", buf,
                 ntohs(pinst->listen_addr.sin_port));
         goto cleanup;
     }
 
     if (listen(pinst->listen_fd, CONFIG_EHTTPD_LISTENER_BACKLOG) < 0) {
-        EHTTPD_LOGE(__func__, "unable to listen on TCP %s:%d", buf,
+        LOGE(__func__, "unable to listen on TCP %s:%d", buf,
                 ntohs(pinst->listen_addr.sin_port));
         goto cleanup;
     }
 
-    EHTTPD_LOGI(__func__, "esphttpd listening on TCP %s:%d%s", buf,
+    LOGI(__func__, "esphttpd listening on TCP %s:%d%s", buf,
             ntohs(pinst->listen_addr.sin_port),
             (pinst->flags & EHTTPD_FLAG_TLS) ? " TLS" : "");
 
@@ -624,7 +514,7 @@ static void listener_task(void *arg)
                 (struct sockaddr *) &pinst->conn_data.addr, &len);
         if (pinst->conn_data.fd < 0) {
             ehttpd_semaphore_give(pinst->conn_empty);
-            EHTTPD_LOGE(__func__, "accept failed");
+            LOGE(__func__, "accept failed");
             continue;
         }
         ehttpd_semaphore_give(pinst->conn_full);
@@ -633,18 +523,16 @@ static void listener_task(void *arg)
 cleanup:
     close(pinst->listen_fd);
 
+#if defined(CONFIG_EHTTPD_MBEDTLS)
     if (pinst->flags & EHTTPD_FLAG_TLS && pinst->ssl) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
         mbedtls_x509_crt_free(&pinst->ssl->cert);
         mbedtls_pk_free(&pinst->ssl->pkey);
         mbedtls_ssl_config_free(&pinst->ssl->conf);
         mbedtls_ctr_drbg_free(&pinst->ssl->ctr_drbg);
         mbedtls_entropy_free(&pinst->ssl->entropy);
         free(pinst->ssl);
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        SSL_CTX_free(pinst->ssl);
-#endif
     }
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
     ehttpd_thread_t *thread = pinst->thread;
     ehttpd_destroy(&pinst->inst);
@@ -682,7 +570,7 @@ static void worker_task(void *arg)
         char ipstr[16];
         inet_ntop(AF_INET, &pconn->conn_data.addr.sin_addr, ipstr,
                 sizeof(ipstr));
-        EHTTPD_LOGD(__func__, "new connection from %s:%d%s %p", ipstr,
+        LOGD(__func__, "new connection from %s:%d%s %p", ipstr,
                 ntohs(pconn->conn_data.addr.sin_port),
                 pinst->flags & EHTTPD_FLAG_TLS ? " TLS" : "", pconn);
 
@@ -694,7 +582,7 @@ static void worker_task(void *arg)
 #if defined(CONFIG_EHTTPD_TCP_NODELAY)
         nodelay = 1; // enable TCP_NODELAY to speed-up transfers of small
                      // files. See Nagle's Algorithm.
-#endif
+#endif /* defined(CONFIG_EHTTPD_TCP_NODELAY) */
 
         setsockopt(pconn->conn_data.fd, SOL_SOCKET, SO_KEEPALIVE,
                 (void *) &keepAlive, sizeof(keepAlive));
@@ -707,14 +595,14 @@ static void worker_task(void *arg)
         setsockopt(pconn->conn_data.fd, IPPROTO_TCP, TCP_NODELAY,
                 (void *) &nodelay, sizeof(nodelay));
 
+#if defined(CONFIG_EHTTPD_MBEDTLS)
         if (pinst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
             mbedtls_ssl_init(&pconn->ssl);
 
             int ret = mbedtls_ssl_setup(&pconn->ssl,
                     &pinst->ssl->conf);
             if (ret != 0) {
-                EHTTPD_LOGE(__func__, "mbedtls_ssl_setup %d", ret);
+                LOGE(__func__, "mbedtls_ssl_setup %d", ret);
                 close(pconn->conn_data.fd);
                 continue;
             }
@@ -724,16 +612,16 @@ static void worker_task(void *arg)
 
             while ((ret = mbedtls_ssl_handshake(&pconn->ssl)) != 0) {
                 if (ret == MBEDTLS_ERR_SSL_WANT_READ) {
-                    EHTTPD_LOGD(__func__, "MBEDTLS_ERR_SSL_WANT_READ %p",
+                    LOGD(__func__, "MBEDTLS_ERR_SSL_WANT_READ %p",
                             pconn);
                     continue;
                 }
                 if (ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
-                    EHTTPD_LOGD(__func__, "MBEDTLS_ERR_SSL_WANT_WRITE %p",
+                    LOGD(__func__, "MBEDTLS_ERR_SSL_WANT_WRITE %p",
                             pconn);
                     continue;
                 }
-                EHTTPD_LOGE(__func__, "mbedtls_ssl_handshake %d", ret);
+                LOGE(__func__, "mbedtls_ssl_handshake %d", ret);
                 break;
             }
             if (ret != 0) {
@@ -741,59 +629,31 @@ static void worker_task(void *arg)
                 close(pconn->conn_data.fd);
                 continue;
             }
-
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-            pconn->ssl = SSL_new(pinst->ssl);
-            if (pconn->ssl == NULL) {
-                EHTTPD_LOGE(__func__, "SSL_new");
-                close(pconn->conn_data.fd);
-                continue;
-            }
-
-            SSL_set_fd(pconn->ssl, pconn->conn_data.fd);
-
-            int ret = SSL_accept(pconn->ssl);
-            if (ret <= 0) {
-                ret = SSL_get_error(pconn->ssl, ret);
-                EHTTPD_LOGE(__func__, "SSL_accept %d", ret);
-                close(pconn->conn_data.fd);
-                SSL_free(pconn->ssl);
-                continue;
-            }
-#endif
         }
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
         ehttpd_new_conn_cb(&pconn->conn);
 
         if (!pconn->error) {
+#if defined(CONFIG_EHTTPD_MBEDTLS)
             if (pinst->flags & EHTTPD_FLAG_TLS) {
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
                 int ret;
                 while ((ret = mbedtls_ssl_close_notify(&pconn->ssl)) < 0) {
-                    EHTTPD_LOGE(__func__, "mbedtls_ssl_close_notify %d", ret);
+                    LOGE(__func__, "mbedtls_ssl_close_notify %d", ret);
                     break;
                 }
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-                int ret = SSL_shutdown(pconn->ssl);
-                if (ret == 0) {
-                    return;
-                } else if (ret < 0) {
-                    EHTTPD_LOGE(__func__, "SSL_shutdown %d", ret);
-                }
-#endif
             }
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
             shutdown(pconn->conn_data.fd, SHUT_RDWR);
         }
 
         close(pconn->conn_data.fd);
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
         mbedtls_ssl_free(&pconn->ssl);
-#elif defined(CONFIG_EHTTPD_TLS_OPENSSL)
-        SSL_free(pconn->ssl);
-#endif
+#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
 
-        EHTTPD_LOGD(__func__, "disconnected %p", pconn);
+        LOGD(__func__, "disconnected %p", pconn);
 
         pinst->num_connections--;
 

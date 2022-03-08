@@ -36,9 +36,9 @@ typedef struct ehttpd_captdns_t ehttpd_captdns_t;
  * **A**
  *
  *     If **addr.sin_addr** is not **0.0.0.0**, it is returned. Otherwise, on
- *     CONFIG_IDF_TARGET_ESP8266 or ESP_PLATFORM the netif ip address of the
- *     matching netif will be returned. Else, it will return the from address
- *     masked with **255.255.255.0** and the last octet set to **1**.
+ *     ESP_PLATFORM the netif ip address of the matching netif will be
+ *     returned. Else, it will return the from address masked with
+ *     **255.255.255.0** and the last octet set to **1**.
  *
  * **NS**
  *

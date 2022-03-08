@@ -123,24 +123,12 @@ config EHTTPD_TCP_NODELAY
 		frames (It will disable Nagle's TCP Algorithm).  It can speed-up
 		transfers for small files.
 
-choice
-	prompt "TLS Support"
-	default EHTTPD_TLS_DISABLED
+config EHTTPD_MBEDTLS
+	bool "Enable MBedTLS"
+	default n
 	help
-		Enabling this allows the server to accept TLS connections.
-
-config EHTTPD_TLS_DISABLED
-	bool "Disabled"
-
-config EHTTPD_TLS_MBEDTLS
-	bool "Use MbedTLS"
-
-config EHTTPD_TLS_OPENSSL
-	bool "Use OpenSSL"
-	help
-		OpenSSL connections require ~32k of ram each.
-
-endchoice
+		Enabling this allows HTTP instances to be configured for serving
+		TLS connections.
 
 config EHTTPD_FW_OTA_FACTORY
 	bool "Allow OTA of factory partition"

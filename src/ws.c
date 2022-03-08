@@ -85,7 +85,7 @@ static int send_frame_head(ehttpd_ws_t *ws, uint8_t opcode, size_t len)
     } else {
         buf[i++] = len;
     }
-    EHTTPD_LOGV(__func__, "payload of %d bytes", len);
+    LOGV(__func__, "payload of %d bytes", len);
     return ehttpd_plat_send(ws->conn, buf, i);
 }
 
@@ -202,7 +202,7 @@ ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
                     break;
 
                 default:
-                    EHTTPD_LOGE(__func__, "unhandled opcode");
+                    LOGE(__func__, "unhandled opcode");
                     /* error */
                     return -1;
 

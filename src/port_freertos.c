@@ -65,7 +65,7 @@ ehttpd_mutex_t *ehttpd_mutex_create(bool recursive)
     struct ehttpd_mutex_t *mutex =
             (struct ehttpd_mutex_t *) malloc(sizeof(struct ehttpd_mutex_t));
     if (mutex == NULL) {
-        EHTTPD_LOGE(__func__, "malloc failed");
+        LOGE(__func__, "malloc failed");
         return NULL;
     }
 
@@ -207,7 +207,7 @@ ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
             autoreload ? pdTRUE:pdFALSE, timer, timer_handler);
     if (timer->handle == NULL) {
         free(timer);
-        EHTTPD_LOGE(__func__, "xTimerCreate failed");
+        LOGE(__func__, "xTimerCreate failed");
         return NULL;
     }
 

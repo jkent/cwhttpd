@@ -19,7 +19,7 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 # include <lwip/sockets.h>
 #endif
 
@@ -52,7 +52,7 @@ typedef struct ehttpd_inst_t ehttpd_inst_t;
 typedef struct ehttpd_request_t ehttpd_request_t;
 typedef struct ehttpd_conn_t ehttpd_conn_t;
 typedef struct ehttpd_post_t ehttpd_post_t;
-typedef struct espfs_fs_t espfs_fs_t;
+typedef struct frogfs_fs_t frogfs_fs_t;
 typedef struct ehttpd_method_entry_t ehttpd_method_entry_t;
 
 typedef enum ehttpd_flags_t ehttpd_flags_t;
@@ -98,7 +98,7 @@ struct ehttpd_inst_t {
     ehttpd_route_t *route_head; /**< head of route linked list */
     ehttpd_route_t *route_tail; /**< tail of route linked list */
     size_t num_routes; /**< number of routes */
-    espfs_fs_t *espfs; /**< \a espfs_fs_t instance */
+    frogfs_fs_t *frogfs; /**< \a frogfs_fs_t instance */
     void *user; /**< user data */
 };
 
@@ -167,7 +167,7 @@ void ehttpd_route_remove(
     ssize_t index /** [in] index of route entry, can be negative */
 );
 
-#if defined(CONFIG_EHTTPD_TLS_MBEDTLS) || defined(CONFIG_EHTTPD_TLS_OPENSSL)
+#if defined(CONFIG_EHTTPD_MBEDTLS)
 /**
  * \brief Set the ssl certificate and private key (in DER format)
  *
@@ -216,7 +216,7 @@ void ehttpd_add_client_cert(
     const void *cert, /** [in] certificate data */
     size_t cert_len /** [in] certificate length */
 );
-#endif /* CONFIG_EHTTPD_TLS_OPENSSL */
+#endif /* CONFIG_EHTTPD_MBEDTLS */
 
 /**
  * \brief Start a httpd instance

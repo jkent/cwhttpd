@@ -206,7 +206,7 @@ ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
             count += ret;
         }
         if (len > conn->priv.chunk_left) {
-            EHTTPD_LOGE(__func__, "chunk overflow");
+            LOGE(__func__, "chunk overflow");
             return -1;
         }
         conn->priv.chunk_left -= len;
@@ -306,7 +306,7 @@ const char *ehttpd_get_header(ehttpd_conn_t *conn, const char *name)
 void ehttpd_set_chunked(ehttpd_conn_t *conn, bool enable)
 {
     if (conn->priv.flags & HFL_SENT_HEADERS) {
-        EHTTPD_LOGE(__func__, "headers already sent");
+        LOGE(__func__, "headers already sent");
         return;
     }
 
@@ -319,12 +319,12 @@ void ehttpd_set_chunked(ehttpd_conn_t *conn, bool enable)
 void ehttpd_set_close(ehttpd_conn_t *conn, bool close)
 {
     if (conn->priv.flags & HFL_SENT_HEADERS) {
-        EHTTPD_LOGE(__func__, "headers already sent");
+        LOGE(__func__, "headers already sent");
         return;
     }
 
     if (close) {
-        EHTTPD_LOGI(__func__, "requesting close %p", conn);
+        LOGI(__func__, "requesting close %p", conn);
         conn->priv.flags |= HFL_REQUEST_CLOSE;
     } else {
         conn->priv.flags &= ~HFL_REQUEST_CLOSE;
@@ -336,7 +336,7 @@ ssize_t ehttpd_response(ehttpd_conn_t *conn, int code)
     const char *message;
 
     if (conn->priv.flags & HFL_SENT_RESPONSE) {
-        EHTTPD_LOGE(__func__, "response already sent");
+        LOGE(__func__, "response already sent");
         return 0;
     }
 
@@ -427,7 +427,7 @@ ssize_t ehttpd_response(ehttpd_conn_t *conn, int code)
 ssize_t ehttpd_send_header(ehttpd_conn_t *conn, const char *name, const char *value)
 {
     if (conn->priv.flags & HFL_SENT_HEADERS) {
-        EHTTPD_LOGE(__func__, "headers already sent");
+        LOGE(__func__, "headers already sent");
         return 0;
     }
 
@@ -476,7 +476,7 @@ ssize_t ehttpd_chunk_start(ehttpd_conn_t *conn, size_t len)
         return 0;
     }
     if (conn->priv.flags & HFL_SENDING_CHUNK) {
-        EHTTPD_LOGE(__func__, "chunk framing");
+        LOGE(__func__, "chunk framing");
         return -1;
     }
     conn->priv.flags |= HFL_SENDING_CHUNK;
@@ -493,7 +493,7 @@ ssize_t ehttpd_chunk_end(ehttpd_conn_t *conn)
     }
     if (!(conn->priv.flags & HFL_SENDING_CHUNK) ||
             (conn->priv.chunk_left != 0)) {
-        EHTTPD_LOGE(__func__, "chunk framing");
+        LOGE(__func__, "chunk framing");
         return -1;
     }
     ssize_t ret = ehttpd_plat_send(conn, "\r\n", 2);
@@ -509,7 +509,7 @@ ssize_t ehttpd_chunk_end(ehttpd_conn_t *conn)
 __attribute__((__weak__))
 ehttpd_status_t ehttpd_route_404(ehttpd_conn_t *conn)
 {
-    EHTTPD_LOGD(__func__, "%p", conn);
+    LOGD(__func__, "%p", conn);
     ehttpd_response(conn, 404);
     ehttpd_send(conn, "file not found", -1);
     return EHTTPD_STATUS_DONE;
@@ -720,10 +720,10 @@ static bool parse_request(ehttpd_conn_t *conn)
     }
 
     if (conn->request.args) {
-        EHTTPD_LOGD(__func__, "%s %s?%s %p", conn->priv.req, conn->request.url,
+        LOGD(__func__, "%s %s?%s %p", conn->priv.req, conn->request.url,
                 conn->request.args, conn);
     } else {
-        EHTTPD_LOGD(__func__, "%s %s %p", conn->priv.req, conn->request.url,
+        LOGD(__func__, "%s %s %p", conn->priv.req, conn->request.url,
                 conn);
     }
 
@@ -767,7 +767,7 @@ static bool parse_headers(ehttpd_conn_t *conn)
         if (conn->post == NULL) {
             conn->post = calloc(1, sizeof(ehttpd_post_t));
             if (conn->post == NULL) {
-                EHTTPD_LOGE(__func__, "calloc failed %d bytes",
+                LOGE(__func__, "calloc failed %d bytes",
                         sizeof(ehttpd_post_t));
                 return false;
             }
@@ -785,7 +785,7 @@ static bool parse_headers(ehttpd_conn_t *conn)
             if (conn->post == NULL) {
                 conn->post = calloc(1, sizeof(ehttpd_post_t));
                 if (conn->post == NULL) {
-                    EHTTPD_LOGE(__func__, "calloc failed %d bytes",
+                    LOGE(__func__, "calloc failed %d bytes",
                             sizeof(ehttpd_post_t));
                     return false;
                 }
@@ -795,7 +795,7 @@ static bool parse_headers(ehttpd_conn_t *conn)
                 const char *boundaryToken = "boundary=";
                 if ((b = strstr(value, boundaryToken)) != NULL) {
                     conn->post->boundary = b + strlen(boundaryToken);
-                    EHTTPD_LOGD(__func__, "boundary = %s", conn->post->boundary);
+                    LOGD(__func__, "boundary = %s", conn->post->boundary);
                 }
             }
         }
@@ -828,7 +828,7 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
                 ehttpd_inst_t *inst = conn->inst;
                 memset(conn, 0, sizeof(*conn));
                 conn->inst = inst;
-                EHTTPD_LOGV(__func__, "conn cleaned %p", conn);
+                LOGV(__func__, "conn cleaned %p", conn);
             }
         }
         first_request = false;
@@ -914,7 +914,7 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
             }
         } else if (conn->priv.flags & HFL_SENT_CONTENT_LENGTH) {
             if (conn->priv.chunk_left != 0) {
-                EHTTPD_LOGE(__func__, "Content-Length header does not match "
+                LOGE(__func__, "Content-Length header does not match "
                         "sent length %p", conn);
                 break;
             }

@@ -3,7 +3,7 @@
 #include <stdatomic.h>
 #include <stddef.h>
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 # include <freertos/FreeRTOS.h>
 #else
 # define configAssert()

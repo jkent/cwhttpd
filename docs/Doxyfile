@@ -42,7 +42,7 @@ MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = \
     __attribute__(x)= \
-    CONFIG_EHTTPD_TLS_MBEDTLS=y \
+    CONFIG_EHTTPD_MBEDTLS=y \
     ESP_PLATFORM=y
 
 ## Do not complain about not having dot

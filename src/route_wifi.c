@@ -145,21 +145,21 @@ esp_err_t ehttpd_wifi_init(void)
 
     wifi_events = xEventGroupCreate();
     if (wifi_events == NULL) {
-        EHTTPD_LOGE(TAG, "Unable to create event group.");
+        LOGE(TAG, "Unable to create event group.");
         result = ESP_ERR_NO_MEM;
         goto err_out;
     }
 
     data_lock = xSemaphoreCreateMutex();
     if (data_lock == NULL) {
-        EHTTPD_LOGE(TAG, "Unable to create scan data lock.");
+        LOGE(TAG, "Unable to create scan data lock.");
         result = ESP_ERR_NO_MEM;
         goto err_out;
     }
 
     cfg_state.lock = xSemaphoreCreateMutex();
     if (cfg_state.lock == NULL) {
-        EHTTPD_LOGE(TAG, "Unable to create state lock.");
+        LOGE(TAG, "Unable to create state lock.");
         result = ESP_ERR_NO_MEM;
         goto err_out;
     }
@@ -168,7 +168,7 @@ esp_err_t ehttpd_wifi_init(void)
             SCAN_TIMEOUT,
             pdFALSE, NULL, handle_scan_timer);
     if (scan_timer == NULL) {
-        EHTTPD_LOGE(TAG, "[%s] Failed to create scan timeout timer",
+        LOGE(TAG, "[%s] Failed to create scan timeout timer",
                 __FUNCTION__);
         result = ESP_ERR_NO_MEM;
         goto err_out;
@@ -178,7 +178,7 @@ esp_err_t ehttpd_wifi_init(void)
             CFG_TICKS,
             pdFALSE, NULL, handle_config_timer);
     if (config_timer == NULL) {
-        EHTTPD_LOGE(TAG, "[%s] Failed to create config validation timer",
+        LOGE(TAG, "[%s] Failed to create config validation timer",
                 __FUNCTION__);
         result = ESP_ERR_NO_MEM;
         goto err_out;
@@ -280,13 +280,13 @@ static void wifi_scan_done(system_event_t *event)
     if (atomic_load(&scan_in_progress) == false) {
         /* Either scan was cancelled due to timeout or somebody else *\
         \* is triggering scans.                                      */
-        EHTTPD_LOGE(TAG, "[%s] Received unsolicited scan done event.",
+        LOGE(TAG, "[%s] Received unsolicited scan done event.",
                 __FUNCTION__);
         return;
     }
 
     if (event->event_info.scan_done.status != ESP_OK) {
-        EHTTPD_LOGI(TAG, "Scan failed. Event status: 0x%x",
+        LOGI(TAG, "Scan failed. Event status: 0x%x",
                 event->event_info.scan_done.status);
         goto err_out;
     }
@@ -294,14 +294,14 @@ static void wifi_scan_done(system_event_t *event)
     /* Fetch number of APs found. Bail out early if there is nothing to get. */
     result = esp_wifi_scan_get_ap_num(&num_aps);
     if (result != ESP_OK || num_aps == 0) {
-        EHTTPD_LOGI(TAG, "Scan error or empty scan result");
+        LOGI(TAG, "Scan error or empty scan result");
         goto err_out;
     }
 
     /* Limit number of records to fetch. Prevents possible DoS by tricking   *\
     \* us into allocating storage for a very large amount of scan results.   */
     if (num_aps > MAX_NUM_APS) {
-        EHTTPD_LOGI(TAG, "Limiting AP records to %d (Actually found %d)",
+        LOGI(TAG, "Limiting AP records to %d (Actually found %d)",
                 MAX_NUM_APS, num_aps);
         num_aps = MAX_NUM_APS;
     }
@@ -309,14 +309,14 @@ static void wifi_scan_done(system_event_t *event)
     /* Allocate and initialise memory for scan data and AP records. */
     new_data = calloc(1, sizeof(*new_data));
     if (new_data == NULL) {
-        EHTTPD_LOGE(TAG, "Out of memory creating scan data");
+        LOGE(TAG, "Out of memory creating scan data");
         goto err_out;
     }
 
     kref_init(&(new_data->ref_cnt)); // initialises ref_cnt to 1
     new_data->ap_records = calloc(num_aps, sizeof(*(new_data->ap_records)));
     if (new_data->ap_records == NULL) {
-        EHTTPD_LOGE(TAG, "Out of memory for fetching records");
+        LOGE(TAG, "Out of memory for fetching records");
         goto err_out;
     }
 
@@ -324,11 +324,11 @@ static void wifi_scan_done(system_event_t *event)
     new_data->num_records = num_aps;
     result = esp_wifi_scan_get_ap_records(&(new_data->num_records), new_data->ap_records);
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "Error getting scan results");
+        LOGE(TAG, "Error getting scan results");
         goto err_out;
     }
 
-    EHTTPD_LOGI(TAG, "Scan done: found %d APs", num_aps);
+    LOGI(TAG, "Scan done: found %d APs", num_aps);
 
     /* Make new scan data available. */
     if (xSemaphoreTake(data_lock, portTICK_PERIOD_MS) == pdTRUE) {
@@ -368,7 +368,7 @@ static void handle_scan_timer(TimerHandle_t timer)
     atomic_bool tmp = ATOMIC_VAR_INIT(true);
 
     if (atomic_compare_exchange_strong(&scan_in_progress, &tmp, true) == true) {
-        EHTTPD_LOGI(TAG, "[%s] Timeout, stopping scan.", __FUNCTION__);
+        LOGI(TAG, "[%s] Timeout, stopping scan.", __FUNCTION__);
         (void) esp_wifi_scan_stop();
         atomic_store(&scan_in_progress, false);
     }
@@ -385,12 +385,12 @@ static esp_err_t wifi_start_scan(void)
     /* Make sure we do not try to start a scan while the WiFi config is *\
     \* is in a transitional state.                                      */
     if (xSemaphoreTake(cfg_state.lock, CFG_DELAY) != pdTRUE) {
-        EHTTPD_LOGW(TAG, "[%s] Unable to acquire config lock.", __FUNCTION__);
+        LOGW(TAG, "[%s] Unable to acquire config lock.", __FUNCTION__);
         return ESP_FAIL;
     }
 
     if (cfg_state.state > cfg_state_idle) {
-        EHTTPD_LOGI(TAG, "[%s] WiFi connecting, not starting scan.", __FUNCTION__);
+        LOGI(TAG, "[%s] WiFi connecting, not starting scan.", __FUNCTION__);
         result = ESP_FAIL;
         goto err_out;
     }
@@ -398,19 +398,19 @@ static esp_err_t wifi_start_scan(void)
     /* Check that we are in a suitable mode for scanning. */
     result =  esp_wifi_get_mode(&mode);
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
         goto err_out;
     }
 
     if (mode != WIFI_MODE_APSTA && mode != WIFI_MODE_STA) {
-        EHTTPD_LOGE(TAG, "[%s] Invalid WiFi mode for scanning.", __FUNCTION__);
+        LOGE(TAG, "[%s] Invalid WiFi mode for scanning.", __FUNCTION__);
         result = ESP_FAIL;
         goto err_out;
     }
 
     /* Finally, start a scan. Unless there is one running already. */
     if (atomic_exchange(&scan_in_progress, true) == false) {
-        EHTTPD_LOGI(TAG, "[%s] Starting scan.", __FUNCTION__);
+        LOGI(TAG, "[%s] Starting scan.", __FUNCTION__);
 
         memset(&scan_cfg, 0x0, sizeof(scan_cfg));
         scan_cfg.show_hidden = true;
@@ -418,17 +418,17 @@ static esp_err_t wifi_start_scan(void)
 
         result = esp_wifi_scan_start(&scan_cfg, false);
         if (result == ESP_OK) {
-            EHTTPD_LOGI(TAG, "[%s] Starting timer.", __FUNCTION__);
+            LOGI(TAG, "[%s] Starting timer.", __FUNCTION__);
 
             /* Trigger the timer so scan will be aborted after timeout. */
             xTimerReset(scan_timer, 0);
         } else {
-            EHTTPD_LOGE(TAG, "[%s] Starting AP scan failed.", __FUNCTION__);
+            LOGE(TAG, "[%s] Starting AP scan failed.", __FUNCTION__);
 
             atomic_store(&scan_in_progress, false);
         }
     } else {
-        EHTTPD_LOGI(TAG, "[%s] Scan already running.", __FUNCTION__);
+        LOGI(TAG, "[%s] Scan already running.", __FUNCTION__);
         result = ESP_OK;
     }
 
@@ -460,7 +460,7 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
     }
 
     if (esp_wifi_get_mode(&mode) != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
         goto err_out;
     }
 
@@ -478,7 +478,7 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
                 iter->idx = 0;
                 conn->user = (void *) iter;
             } else {
-                EHTTPD_LOGE(TAG, "[%s] Iterator allocation failed.", __FUNCTION__);
+                LOGE(TAG, "[%s] Iterator allocation failed.", __FUNCTION__);
                 put_scan_data(data);
             }
         } else {
@@ -576,7 +576,7 @@ static void set_wifi_cfg(struct wifi_cfg *cfg)
         // turning off WiFi
         result = esp_wifi_stop();
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] esp_wifi_stop(): %d %s",
+            LOGE(TAG, "[%s] esp_wifi_stop(): %d %s",
                     __FUNCTION__, result, esp_err_to_name(result));
         }
     }
@@ -586,7 +586,7 @@ static void set_wifi_cfg(struct wifi_cfg *cfg)
     \*        probably a bad idea.                                 */
     result = esp_wifi_set_mode(cfg->mode);
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] esp_wifi_set_mode(): %d %s",
+        LOGE(TAG, "[%s] esp_wifi_set_mode(): %d %s",
                 __FUNCTION__, result, esp_err_to_name(result));
     }
 
@@ -598,7 +598,7 @@ static void set_wifi_cfg(struct wifi_cfg *cfg)
     if (cfg->mode == WIFI_MODE_APSTA || cfg->mode == WIFI_MODE_AP) {
         result = esp_wifi_set_config(WIFI_IF_AP, &(cfg->ap));
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] esp_wifi_set_config() AP: %d %s",
+            LOGE(TAG, "[%s] esp_wifi_set_config() AP: %d %s",
                     __FUNCTION__, result, esp_err_to_name(result));
         }
     }
@@ -606,14 +606,14 @@ static void set_wifi_cfg(struct wifi_cfg *cfg)
     if (cfg->mode == WIFI_MODE_APSTA || cfg->mode == WIFI_MODE_STA) {
         result = esp_wifi_set_config(WIFI_IF_STA, &(cfg->sta));
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] esp_wifi_set_config() STA: %d %s",
+            LOGE(TAG, "[%s] esp_wifi_set_config() STA: %d %s",
                     __FUNCTION__, result, esp_err_to_name(result));
         }
     }
 
     result = esp_wifi_start();
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] esp_wifi_start(): %d %s",
+        LOGE(TAG, "[%s] esp_wifi_start(): %d %s",
                 __FUNCTION__, result, esp_err_to_name(result));
     }
 
@@ -623,7 +623,7 @@ static void set_wifi_cfg(struct wifi_cfg *cfg)
     {
         result = esp_wifi_connect();
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] esp_wifi_connect(): %d %s",
+            LOGE(TAG, "[%s] esp_wifi_connect(): %d %s",
                     __FUNCTION__, result, esp_err_to_name(result));
         }
     }
@@ -642,19 +642,19 @@ static esp_err_t get_wifi_cfg(struct wifi_cfg *cfg)
 
     result = esp_wifi_get_config(WIFI_IF_STA, &(cfg->sta));
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching STA config.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching STA config.", __FUNCTION__);
         goto err_out;
     }
 
     result = esp_wifi_get_config(WIFI_IF_AP, &(cfg->ap));
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
         goto err_out;
     }
 
     result = esp_wifi_get_mode(&(cfg->mode));
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
         goto err_out;
     }
 
@@ -696,13 +696,13 @@ static void handle_config_timer(TimerHandle_t timer)
     \* Maybe we should trigger a reboot.                                    */
     if (xSemaphoreTake(cfg_state.lock, 0) != pdTRUE) {
         if (xTimerChangePeriod(config_timer, CFG_DELAY, CFG_DELAY) != pdPASS) {
-            EHTTPD_LOGE(TAG, "[%s] Failure to get config lock and change timer.",
+            LOGE(TAG, "[%s] Failure to get config lock and change timer.",
                     __FUNCTION__);
         }
         return;
     }
 
-    EHTTPD_LOGD(TAG, "[%s] Called. State: %s",
+    LOGD(TAG, "[%s] Called. State: %s",
             __FUNCTION__, state_names[cfg_state.state]);
 
     /* If delay gets set later, the timer will be re-scheduled on exit. */
@@ -715,7 +715,7 @@ static void handle_config_timer(TimerHandle_t timer)
 
     result = esp_wifi_get_mode(&mode);
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching WiFi mode.", __FUNCTION__);
         cfg_state.state = cfg_state_failed;
         goto err_out;
     }
@@ -736,7 +736,7 @@ static void handle_config_timer(TimerHandle_t timer)
         xEventGroupClearBits(wifi_events, BITS_WPS);
         result = esp_wifi_wps_enable(&config);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] esp_wifi_wps_enable() failed: %d %s",
+            LOGE(TAG, "[%s] esp_wifi_wps_enable() failed: %d %s",
                     __FUNCTION__, result, esp_err_to_name(result));
             cfg_state.state = cfg_state_fallback;
             delay = CFG_DELAY;
@@ -744,7 +744,7 @@ static void handle_config_timer(TimerHandle_t timer)
 
         result = esp_wifi_wps_start(0);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] esp_wifi_wps_start() failed: %d %s",
+            LOGE(TAG, "[%s] esp_wifi_wps_start() failed: %d %s",
                     __FUNCTION__, result, esp_err_to_name(result));
             cfg_state.state = cfg_state_fallback;
             delay = CFG_DELAY;
@@ -760,10 +760,10 @@ static void handle_config_timer(TimerHandle_t timer)
         if (events & BIT_WPS_SUCCESS) {
             /* WPS succeeded. Disable WPS and use the received credentials *\
              * to connect to the AP by transitioning to the updating state.*/
-            EHTTPD_LOGI(TAG, "[%s] WPS success.", __FUNCTION__);
+            LOGI(TAG, "[%s] WPS success.", __FUNCTION__);
             result = esp_wifi_wps_disable();
             if (result != ESP_OK) {
-                EHTTPD_LOGE(TAG, "[%s] wifi wps disable: %d %s",
+                LOGE(TAG, "[%s] wifi wps disable: %d %s",
                         __FUNCTION__, result, esp_err_to_name(result));
             }
 
@@ -778,12 +778,12 @@ static void handle_config_timer(TimerHandle_t timer)
                 || (events & BIT_WPS_FAILED))
         {
             /* Failure or timeout. Trigger fall-back to the previous config. */
-            EHTTPD_LOGI(TAG, "[%s] WPS failed, restoring saved_cfg config.",
+            LOGI(TAG, "[%s] WPS failed, restoring saved_cfg config.",
                     __FUNCTION__);
 
             result = esp_wifi_wps_disable();
             if (result != ESP_OK) {
-                EHTTPD_LOGE(TAG, "[%s] wifi wps disable: %d %s",
+                LOGE(TAG, "[%s] wifi wps disable: %d %s",
                         __FUNCTION__, result, esp_err_to_name(result));
             }
 
@@ -828,7 +828,7 @@ static void handle_config_timer(TimerHandle_t timer)
         break;
     case cfg_state_fallback:
         /* Something went wrong, try going back to the previous config. */
-        EHTTPD_LOGI(TAG, "[%s] restoring saved_cfg Wifi config.",
+        LOGI(TAG, "[%s] restoring saved_cfg Wifi config.",
                  __FUNCTION__);
         (void) esp_wifi_disconnect();
         set_wifi_cfg(&(cfg_state.saved_cfg));
@@ -848,7 +848,7 @@ static void handle_config_timer(TimerHandle_t timer)
         }
     }
 
-    EHTTPD_LOGD(TAG, "[%s] Leaving. State: %s delay: %d",
+    LOGD(TAG, "[%s] Leaving. State: %s delay: %d",
             __FUNCTION__, state_names[cfg_state.state], delay);
 
     xSemaphoreGive(cfg_state.lock);
@@ -890,7 +890,7 @@ static const char *event_names[] = {
 \* the current system state.                                            */
 void ehttpd_wifi_event_cb(system_event_t *event)
 {
-    EHTTPD_LOGD(TAG, "[%s] Received %s.",
+    LOGD(TAG, "[%s] Received %s.",
             __FUNCTION__, event_names[event->event_id]);
 
     switch(event->event_id) {
@@ -929,13 +929,13 @@ static esp_err_t update_wifi(struct wifi_cfg_state *cfg, struct wifi_cfg *new_cf
     esp_err_t result;
 
     if (xSemaphoreTake(cfg->lock, CFG_DELAY) != pdTRUE) {
-        EHTTPD_LOGE(TAG, "[%s] Error taking mutex.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error taking mutex.", __FUNCTION__);
         return ESP_ERR_TIMEOUT;
     }
 
     if (new_cfg->mode != WIFI_MODE_NULL && cfg->state > cfg_state_idle)
     {
-        EHTTPD_LOGI(TAG, "[%s] Already connecting.", __FUNCTION__);
+        LOGI(TAG, "[%s] Already connecting.", __FUNCTION__);
         result = ESP_ERR_INVALID_STATE;
         goto err_out;
     }
@@ -945,7 +945,7 @@ static esp_err_t update_wifi(struct wifi_cfg_state *cfg, struct wifi_cfg *new_cf
     /* Save current configuration for fall-back. */
     result = get_wifi_cfg(&(cfg->saved_cfg));
     if (result != ESP_OK) {
-        EHTTPD_LOGI(TAG, "[%s] Error fetching current WiFi config.",
+        LOGI(TAG, "[%s] Error fetching current WiFi config.",
                 __FUNCTION__);
         goto err_out;
     }
@@ -1012,7 +1012,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
     redirect = "wifi.tpl";
 
     if (conn->post == NULL) {
-        EHTTPD_LOGE(TAG, "POST data missing");
+        LOGE(TAG, "POST data missing");
         goto err_out;
     }
 
@@ -1022,7 +1022,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
     \* configuration and update just these two entries.             */
     result = get_wifi_cfg(&cfg);
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching WiFi config.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching WiFi config.", __FUNCTION__);
         goto err_out;
     }
 
@@ -1031,7 +1031,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
     len = ehttpd_find_param("essid", conn->post->buf, (char *) sta->ssid,
             &len);
     if (len <= 1) {
-        EHTTPD_LOGE(TAG, "[%s] essid invalid or missing.", __FUNCTION__);
+        LOGE(TAG, "[%s] essid invalid or missing.", __FUNCTION__);
         goto err_out;
     }
 
@@ -1040,7 +1040,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
             &len);
     if (len <= 1) {
         /* FIXME: What about unsecured APs? */
-        EHTTPD_LOGE(TAG, "[%s] Password parameter missing.", __FUNCTION__);
+        LOGE(TAG, "[%s] Password parameter missing.", __FUNCTION__);
         goto err_out;
     }
 
@@ -1048,7 +1048,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
     cfg.connect = true;
 
 #ifndef DEMO_MODE
-    EHTTPD_LOGI(TAG, "Trying to connect to AP %s pw %s",
+    LOGI(TAG, "Trying to connect to AP %s pw %s",
             sta->ssid, sta->password);
 
     result = update_wifi(&cfg_state, &cfg);
@@ -1056,7 +1056,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
         redirect = "connecting.html";
     }
 #else
-    EHTTPD_LOGI(TAG, "Demo mode, not actually connecting to AP %s pw %s",
+    LOGI(TAG, "Demo mode, not actually connecting to AP %s pw %s",
             sta->ssid, sta->password);
 #endif
 
@@ -1086,7 +1086,7 @@ ehttpd_status_t ehttpd_route_wifi_set_mode(ehttpd_conn_t *conn)
         errno = 0;
         mode = strtoul(buf, NULL, 10);
         if (errno != 0 || mode < WIFI_MODE_NULL || mode >= WIFI_MODE_MAX) {
-            EHTTPD_LOGE(TAG, "[%s] Invalid WiFi mode: %d", __FUNCTION__, mode);
+            LOGE(TAG, "[%s] Invalid WiFi mode: %d", __FUNCTION__, mode);
             goto err_out;
         }
 
@@ -1095,31 +1095,31 @@ ehttpd_status_t ehttpd_route_wifi_set_mode(ehttpd_conn_t *conn)
 
         result = get_wifi_cfg(&cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Error fetching current WiFi config.",
+            LOGE(TAG, "[%s] Error fetching current WiFi config.",
                     __FUNCTION__);
             goto err_out;
         }
 
         /* Do not switch to STA mode without being connected to an AP. */
         if (mode == WIFI_MODE_STA && !sta_connected()) {
-            EHTTPD_LOGE(TAG, "[%s] No connection to AP, not switching to "
+            LOGE(TAG, "[%s] No connection to AP, not switching to "
                     "client-only mode.", __FUNCTION__);
             goto err_out;
         }
 
         cfg.mode = mode;
 
-        EHTTPD_LOGI(TAG, "[%s] Switching to WiFi mode %s", __FUNCTION__,
+        LOGI(TAG, "[%s] Switching to WiFi mode %s", __FUNCTION__,
                 mode == WIFI_MODE_AP    ? "SoftAP" :
                         mode == WIFI_MODE_APSTA ? "STA+AP" :
                                 mode == WIFI_MODE_STA   ? "Client" : "Disabled");
 
         result = update_wifi(&cfg_state, &cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Setting WiFi config failed", __FUNCTION__);
+            LOGE(TAG, "[%s] Setting WiFi config failed", __FUNCTION__);
         }
 #else
-        EHTTPD_LOGI(TAG, "[%s] Demo mode, not switching to WiFi mode %s",
+        LOGI(TAG, "[%s] Demo mode, not switching to WiFi mode %s",
                 __FUNCTION__,
                 mode == WIFI_MODE_AP    ? "SoftAP" :
                         mode == WIFI_MODE_APSTA ? "STA+AP" :
@@ -1148,23 +1148,23 @@ ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn)
 
     /* Make sure we are not in the middle of setting a new WiFi config. */
     if (xSemaphoreTake(cfg_state.lock, CFG_DELAY) != pdTRUE) {
-        EHTTPD_LOGE(TAG, "[%s] Error taking mutex.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error taking mutex.", __FUNCTION__);
         ehttpd_redirect(conn, "wifi.tpl");
         return EHTTPD_STATUS_DONE;
     }
 
     if (cfg_state.state > cfg_state_idle) {
-        EHTTPD_LOGI(TAG, "[%s] Already connecting.", __FUNCTION__);
+        LOGI(TAG, "[%s] Already connecting.", __FUNCTION__);
         goto err_out;
     }
 
 #ifndef DEMO_MODE
-    EHTTPD_LOGI(TAG, "[%s] Starting WPS.", __FUNCTION__);
+    LOGI(TAG, "[%s] Starting WPS.", __FUNCTION__);
 
     /* Save current config for fall-back. */
     result = get_wifi_cfg(&cfg);
     if (result != ESP_OK) {
-        EHTTPD_LOGE(TAG, "[%s] Error fetching WiFi config.", __FUNCTION__);
+        LOGE(TAG, "[%s] Error fetching WiFi config.", __FUNCTION__);
         goto err_out;
     }
 
@@ -1175,7 +1175,7 @@ ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn)
         cfg_state.state = cfg_state_failed;
     }
 #else
-    EHTTPD_LOGI(TAG, "[%s] Demo mode, not starting WPS.", __FUNCTION__);
+    LOGI(TAG, "[%s] Demo mode, not starting WPS.", __FUNCTION__);
 #endif
 
     err_out:
@@ -1199,7 +1199,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
     }
 
     if (conn->post == NULL) {
-        EHTTPD_LOGE(TAG, "POST data missing");
+        LOGE(TAG, "POST data missing");
         goto err_out;
     }
 
@@ -1211,7 +1211,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
         errno = 0;
         chan = strtoul(buf, NULL, 10);
         if (errno != 0 || chan < 1 || chan > 15) {
-            EHTTPD_LOGW(TAG, "[%s] Not setting invalid channel %s",
+            LOGW(TAG, "[%s] Not setting invalid channel %s",
                     __FUNCTION__, buf);
         } else {
             has_arg_chan = true;
@@ -1228,7 +1228,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
         if (n == 1) {
             has_arg_ssid = true;
         } else {
-            EHTTPD_LOGW(TAG, "[%s] Not setting invalid ssid %s",
+            LOGW(TAG, "[%s] Not setting invalid ssid %s",
                     __FUNCTION__, buf);
         }
     }
@@ -1243,7 +1243,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
         if (n == 1) {
             has_arg_pass = true;
         } else {
-            EHTTPD_LOGW(TAG, "[%s] Not setting invalid pass %s",
+            LOGW(TAG, "[%s] Not setting invalid pass %s",
                     __FUNCTION__, buf);
         }
     }
@@ -1253,33 +1253,33 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
         struct wifi_cfg cfg;
         result = get_wifi_cfg(&cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Fetching WiFi config failed", __FUNCTION__);
+            LOGE(TAG, "[%s] Fetching WiFi config failed", __FUNCTION__);
             goto err_out;
         }
 
         if (has_arg_chan) {
-            EHTTPD_LOGI(TAG, "[%s] Setting ch=%d", __FUNCTION__, chan);
+            LOGI(TAG, "[%s] Setting ch=%d", __FUNCTION__, chan);
             cfg.ap.ap.channel = (uint8_t) chan;
         }
 
         if (has_arg_ssid) {
-            EHTTPD_LOGI(TAG, "[%s] Setting ssid=%s", __FUNCTION__, ssid);
+            LOGI(TAG, "[%s] Setting ssid=%s", __FUNCTION__, ssid);
             strlcpy((char *) cfg.ap.ap.ssid, ssid, sizeof(cfg.ap.ap.ssid));
             cfg.ap.ap.ssid_len = 0;  // if ssid_len==0, check the SSID until there is a termination character; otherwise, set the SSID length according to softap_config.ssid_len.
-            EHTTPD_LOGI(TAG, "[%s] Set ssid=%s", __FUNCTION__, cfg.ap.ap.ssid);
+            LOGI(TAG, "[%s] Set ssid=%s", __FUNCTION__, cfg.ap.ap.ssid);
         }
 
         if (has_arg_pass) {
-            EHTTPD_LOGI(TAG, "[%s] Setting pass=%s", __FUNCTION__, pass);
+            LOGI(TAG, "[%s] Setting pass=%s", __FUNCTION__, pass);
             strlcpy((char *) cfg.ap.ap.password, pass, sizeof(cfg.ap.ap.password));
         }
 
         result = update_wifi(&cfg_state, &cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Setting WiFi config failed", __FUNCTION__);
+            LOGE(TAG, "[%s] Setting WiFi config failed", __FUNCTION__);
         }
 #else
-        EHTTPD_LOGI(TAG, "[%s] Demo mode, not setting ch=%d", __FUNCTION__, chan);
+        LOGI(TAG, "[%s] Demo mode, not setting ch=%d", __FUNCTION__, chan);
 #endif
     }
 
@@ -1315,7 +1315,7 @@ ehttpd_status_t ehttpd_route_wifi_status(ehttpd_conn_t *conn)
     case cfg_state_connected:
         result = tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &info);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Error fetching IP config.", __FUNCTION__);
+            LOGE(TAG, "[%s] Error fetching IP config.", __FUNCTION__);
             goto err_out;
         }
         snprintf(buf, sizeof(buf) - 1,
@@ -1334,7 +1334,7 @@ ehttpd_status_t ehttpd_route_wifi_status(ehttpd_conn_t *conn)
     return EHTTPD_STATUS_DONE;
 
     err_out:
-    EHTTPD_LOGE(TAG, "[%s] Failed.", __FUNCTION__);
+    LOGE(TAG, "[%s] Failed.", __FUNCTION__);
     ehttpd_response(conn, 500);
     ehttpd_end_headers(conn);
 
@@ -1382,7 +1382,7 @@ ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
         //if (sta_connected()) {
             result = esp_wifi_get_config(WIFI_IF_STA, &cfg);
             if (result != ESP_OK) {
-                EHTTPD_LOGE(TAG, "[%s] Error fetching STA config.", __FUNCTION__);
+                LOGE(TAG, "[%s] Error fetching STA config.", __FUNCTION__);
                 goto err_out;
             }
             strlcpy(buf, (char *) cfg.sta.ssid, sizeof(buf));
@@ -1392,7 +1392,7 @@ ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
         //if (sta_connected()) {
             result = esp_wifi_get_config(WIFI_IF_STA, &cfg);
             if (result != ESP_OK) {
-                EHTTPD_LOGE(TAG, "[%s] Error fetching STA config.", __FUNCTION__);
+                LOGE(TAG, "[%s] Error fetching STA config.", __FUNCTION__);
                 goto err_out;
             }
             strlcpy(buf, (char *) cfg.sta.password, sizeof(buf));
@@ -1401,7 +1401,7 @@ ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
         wifi_config_t cfg;
         result = esp_wifi_get_config(WIFI_IF_AP, &cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
+            LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
             goto err_out;
         }
         strlcpy(buf, (char *) cfg.ap.ssid, sizeof(buf));
@@ -1410,7 +1410,7 @@ ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
         wifi_config_t cfg;
         result = esp_wifi_get_config(WIFI_IF_AP, &cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
+            LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
             goto err_out;
         }
         strlcpy(buf, (char *) cfg.ap.password, sizeof(buf));
@@ -1419,7 +1419,7 @@ ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
         wifi_config_t cfg;
         result = esp_wifi_get_config(WIFI_IF_AP, &cfg);
         if (result != ESP_OK) {
-            EHTTPD_LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
+            LOGE(TAG, "[%s] Error fetching AP config.", __FUNCTION__);
             goto err_out;
         }
         snprintf(buf, sizeof(buf), "%d", cfg.ap.channel);

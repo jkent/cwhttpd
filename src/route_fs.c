@@ -103,7 +103,7 @@ ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
     }
 
     bool gzip_encoding = false;
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
     /* Legacy ESPFS */
     if (st.st_spare4[0] == 0x73665345) {
         if (st.st_spare4[0] & 2) {
@@ -138,7 +138,7 @@ ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
          * response if not present. */
         const char *header = ehttpd_get_header(conn, "Accept-Encoding");
         if (header && strstr(header, "gzip") == NULL) {
-            EHTTPD_LOGE(__func__, "client does not accept gzip!");
+            LOGE(__func__, "client does not accept gzip!");
             fclose(f);
             TRY(ehttpd_response(conn, 500));
             return EHTTPD_STATUS_DONE;
@@ -200,7 +200,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
     }
 
     if (gzip_encoding) {
-        EHTTPD_LOGE(__func__, "template has gzip encoding");
+        LOGE(__func__, "template has gzip encoding");
         return EHTTPD_STATUS_NOTFOUND;
     }
 #endif
@@ -295,7 +295,7 @@ static int create_missing_directories(const char *fullpath)
                 continue;
             } else if (result != 0 && errno == ENOENT) {
                 if (mkdir(path, S_IRWXU) != 0) {
-                    EHTTPD_LOGE(__func__, "mkdir failed");
+                    LOGE(__func__, "mkdir failed");
                     path[i] = '/';
                     return 1;
                 }
@@ -325,11 +325,11 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
         if (data != NULL) {
             if(data->file != NULL) {
                 fclose(data->file);
-                EHTTPD_LOGD(__func__, "fclose: %s, r", data->filename);
+                LOGD(__func__, "fclose: %s, r", data->filename);
             }
             free(data);
         }
-        EHTTPD_LOGE(__func__, "Connection aborted!");
+        LOGE(__func__, "Connection aborted!");
         return EHTTPD_STATUS_DONE;
     }
 
@@ -341,7 +341,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
         }
         data = (upload_data_t *) malloc(sizeof(upload_data_t));
         if (data == NULL) {
-            EHTTPD_LOGE(__func__, "malloc fail");
+            LOGE(__func__, "malloc fail");
             goto err;
         }
         conn->user = data;
@@ -350,7 +350,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
         if (conn->post->boundary != NULL) {
             /* TODO: handle multipart/form-data POST */
             /* upload using xhr.send(file), not xhr.send(form) */
-            EHTTPD_LOGE(__func__, "multipart/form-data is not supported");
+            LOGE(__func__, "multipart/form-data is not supported");
             goto err;
         }
 
@@ -388,7 +388,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
                     sizeof(data->filepath) - data->filepath_len);
         }
 
-        EHTTPD_LOGI(__func__, "Uploading: %s", data->filepath);
+        LOGI(__func__, "Uploading: %s", data->filepath);
 
         if (create_missing_directories(data->filepath) != 0) {
             data->errtxt = "Error creating directories!";
@@ -399,14 +399,14 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
         data->file = fopen(data->filepath, "w");
         if (data->file == NULL) {
             data->errtxt = "Can't open file for writing!";
-            EHTTPD_LOGE(__func__, "%s", data->errtxt);
+            LOGE(__func__, "%s", data->errtxt);
             goto err;
         }
 
         data->state = UPSTATE_WRITE;
     }
 
-    EHTTPD_LOGD(__func__, "Chunk: %d bytes, ", conn->post->buf_len);
+    LOGD(__func__, "Chunk: %d bytes, ", conn->post->buf_len);
 
     if (data->state == UPSTATE_WRITE) {
         if (data->file != NULL){
@@ -414,7 +414,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
                     data->file);
             data->b_written += count;
             if (count != conn->post->buf_len) {
-                EHTTPD_LOGE(__func__, "write error");
+                LOGE(__func__, "write error");
             }
             if (data->b_written >= conn->post->len) {
                 data->state = UPSTATE_DONE;
@@ -422,7 +422,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
         }
         /* eat any extra bytes */
     } else if (data->state == UPSTATE_DONE) {
-        EHTTPD_LOGE(__func__, "extra data received");
+        LOGE(__func__, "extra data received");
         /* ignore those bytes. */
     }
 
@@ -435,7 +435,7 @@ err:
     if(data->file != NULL){
         fclose(data->file);
     }
-    EHTTPD_LOGI(__func__, "Total: %d bytes written.", data->b_written);
+    LOGI(__func__, "Total: %d bytes written.", data->b_written);
 
     char *json = json_asprintf("{filename:%Q,received:%d,written:%d,"
             "success:%B}", data->filename, conn->post->received,

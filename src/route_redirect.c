@@ -6,7 +6,7 @@
 #include "libesphttpd/route.h"
 #include "libesphttpd/httpd.h"
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 # include <esp_netif.h>
 #endif
 
@@ -39,7 +39,7 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
     }
 
 #if 0
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
     /* If we're not on the AP network, don't redirect the hostname
      */
     uint32_t remote;
@@ -66,12 +66,12 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
      */
     buf = malloc(strlen(new_hostname) + strlen(uri_fmt) - 1);
     if (buf == NULL) {
-        EHTTPD_LOGE(__func__, "malloc failed");
+        LOGE(__func__, "malloc failed");
         return EHTTPD_STATUS_DONE;
     }
 
     sprintf(buf, uri_fmt, new_hostname);
-    EHTTPD_LOGD(__func__, "redirecting to %s", buf);
+    LOGD(__func__, "redirecting to %s", buf);
     ehttpd_redirect(conn, buf);
     free(buf);
     return EHTTPD_STATUS_DONE;

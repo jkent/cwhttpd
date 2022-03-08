@@ -76,7 +76,7 @@ ehttpd_status_t ehttpd_route_fw_get_next(ehttpd_conn_t *conn)
     ehttpd_end_headers(conn);
     const char *next = id == 1 ? "user1.bin" : "user2.bin";
     ehttpd_send(conn, (uint8_t *) next, -1);
-    EHTTPD_LOGD(__func__, "Next firmware: %s (got %d)", next, id);
+    LOGD(__func__, "Next firmware: %s (got %d)", next, id);
     return EHTTPD_STATUS_DONE;
 }
 
@@ -153,10 +153,10 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
 
     if (state == NULL) {
         //First call. Allocate and initialize state variable.
-        EHTTPD_LOGD(__func__, "Firmware upload route handler start");
+        LOGD(__func__, "Firmware upload route handler start");
         state = malloc(sizeof(UploadState));
         if (state==NULL) {
-            EHTTPD_LOGE(__func__, "Can't allocate firmware upload struct");
+            LOGE(__func__, "Can't allocate firmware upload struct");
             return EHTTPD_STATUS_DONE;
         }
         memset(state, 0, sizeof(UploadState));
@@ -167,16 +167,16 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
         // check that ota support is enabled
         if(!state->configured || !state->running)
         {
-            EHTTPD_LOGE(__func__, "configured or running parititon is null, is OTA support enabled in build configuration?");
+            LOGE(__func__, "configured or running parititon is null, is OTA support enabled in build configuration?");
             state->state=FLST_ERROR;
             state->err="Partition error, OTA not supported?";
         } else {
             if (state->configured != state->running) {
-                EHTTPD_LOGW(__func__, "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
+                LOGW(__func__, "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
                     state->configured->address, state->running->address);
-                EHTTPD_LOGW(__func__, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
+                LOGW(__func__, "(This can happen if either the OTA boot data or preferred boot image become corrupted somehow.)");
             }
-            EHTTPD_LOGI(__func__, "Running partition type %d subtype %d (offset 0x%08x)",
+            LOGI(__func__, "Running partition type %d subtype %d (offset 0x%08x)",
                 state->running->type, state->running->subtype, state->running->address);
 
             state->state=FLST_START;
@@ -199,7 +199,7 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
         }
         if (state->update_partition == NULL)
         {
-            EHTTPD_LOGE(__func__, "update_partition not found!");
+            LOGE(__func__, "update_partition not found!");
             state->err="update_partition not found!";
             state->state=FLST_ERROR;
         }
@@ -216,17 +216,17 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
             if (def->type==CGIFLASH_TYPE_FW && memcmp(data, "EHUG", 4)==0) {
                 state->err="Combined flash images are unneeded/unsupported on ESP32!";
                 state->state=FLST_ERROR;
-                EHTTPD_LOGE(__func__, "Combined flash image not supported on ESP32!");
+                LOGE(__func__, "Combined flash image not supported on ESP32!");
             } else if (def->type==CGIFLASH_TYPE_FW && check_bin_header(conn->post->buf)) {
                 if (state->update_partition == NULL)
                 {
-                    EHTTPD_LOGE(__func__, "update_partition not found!");
+                    LOGE(__func__, "update_partition not found!");
                     state->err="update_partition not found!";
                     state->state=FLST_ERROR;
                 }
                 else
                 {
-                    EHTTPD_LOGI(__func__, "Writing to partition subtype %d at offset 0x%x", state->update_partition->subtype, state->update_partition->address);
+                    LOGI(__func__, "Writing to partition subtype %d at offset 0x%x", state->update_partition->subtype, state->update_partition->address);
 
 #ifdef CONFIG_EHTTPD_FW_OTA_FACTORY
                     // hack the API to allow write to the factory partition!
@@ -246,13 +246,13 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
 
                     if (err != ESP_OK)
                     {
-                        EHTTPD_LOGE(__func__, "esp_ota_begin failed, error=%d", err);
+                        LOGE(__func__, "esp_ota_begin failed, error=%d", err);
                         state->err="esp_ota_begin failed!";
                         state->state=FLST_ERROR;
                     }
                     else
                     {
-                        EHTTPD_LOGI(__func__, "esp_ota_begin succeeded");
+                        LOGI(__func__, "esp_ota_begin succeeded");
                         state->state = FLST_WRITE;
                         state->len = conn->post->len;
                     }
@@ -269,12 +269,12 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
             } else {
                 state->err="Invalid flash image type!";
                 state->state=FLST_ERROR;
-                EHTTPD_LOGE(__func__, "Did not recognize flash image type");
+                LOGE(__func__, "Did not recognize flash image type");
             }
         } else if (state->state==FLST_WRITE) {
             err = esp_ota_write(state->update_handle, data, dataLen);
             if (err != ESP_OK) {
-                EHTTPD_LOGE(__func__, "Error: esp_ota_write failed! err=0x%x", err);
+                LOGE(__func__, "Error: esp_ota_write failed! err=0x%x", err);
                 state->err="Error: esp_ota_write failed!";
                 state->state=FLST_ERROR;
             }
@@ -287,7 +287,7 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
 
             dataLen = 0;
         } else if (state->state==FLST_DONE) {
-            EHTTPD_LOGE(__func__, "%d bogus bytes received after data received", dataLen);
+            LOGE(__func__, "%d bogus bytes received after data received", dataLen);
             //Ignore those bytes.
             dataLen=0;
         } else if (state->state==FLST_ERROR) {
@@ -297,7 +297,7 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
     }
 
 #if 0
-    //TODO: maybe use EHTTPD_LOGD() here in the future
+    //TODO: maybe use LOGD() here in the future
     printf("post->len %d, post->received %d\n", conn->post->len,
         conn->post->received);
     printf("state->len %d, state->address: %d\n", state->len, state->address);
@@ -308,18 +308,18 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
         if (state->state==FLST_DONE) {
             if (esp_ota_end(state->update_handle) != ESP_OK) {
                 state->err="esp_ota_end failed!";
-                EHTTPD_LOGE(__func__, "esp_ota_end failed!");
+                LOGE(__func__, "esp_ota_end failed!");
                 state->state=FLST_ERROR;
             }
             else
             {
                 state->err="Flash Success.";
-                EHTTPD_LOGI(__func__, "Upload done. Sending response");
+                LOGI(__func__, "Upload done. Sending response");
             }
             // todo: automatically set boot flag?
             err = esp_ota_set_boot_partition(state->update_partition);
             if (err != ESP_OK) {
-                EHTTPD_LOGE(__func__, "esp_ota_set_boot_partition failed! err=0x%x", err);
+                LOGE(__func__, "esp_ota_set_boot_partition failed! err=0x%x", err);
             }
         }
         cJSON_AddStringToObject(jsroot, "message", state->err);
@@ -351,7 +351,7 @@ ehttpd_status_t ehttpd_route_fw_reboot(ehttpd_conn_t *conn)
     }
     cJSON *jsroot = cJSON_CreateObject();
 
-    EHTTPD_LOGD(__func__, "Reboot Command recvd. Sending response");
+    LOGD(__func__, "Reboot Command recvd. Sending response");
     // TODO: sanity-check that the 'next' partition actually contains something that looks like
     // valid firmware
 
@@ -385,11 +385,11 @@ ehttpd_status_t ehttpd_route_fw_set_boot(ehttpd_conn_t *conn)
     len = ehttpd_find_param("partition", conn->route->arg, arg_partition_buf, &len);
     if (len > 0)
     {
-        EHTTPD_LOGD(__func__, "Set Boot Command recvd. for partition with name: %s", arg_partition_buf);
+        LOGD(__func__, "Set Boot Command recvd. for partition with name: %s", arg_partition_buf);
         wanted_bootpart = esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,arg_partition_buf);
         esp_err_t err = esp_ota_set_boot_partition(wanted_bootpart);
         if (err != ESP_OK) {
-            EHTTPD_LOGE(__func__, "esp_ota_set_boot_partition failed! err=0x%x", err);
+            LOGE(__func__, "esp_ota_set_boot_partition failed! err=0x%x", err);
         }
     }
     actual_bootpart = esp_ota_get_boot_partition(); // if above failed or arg not specified, return what is currently set for boot.
@@ -421,15 +421,15 @@ ehttpd_status_t ehttpd_route_fw_erase_flash(ehttpd_conn_t *conn)
     len = ehttpd_find_param("verify", conn->route->arg, arg_partition_buf, &len);
     if (len > 0)
     {
-        EHTTPD_LOGD(__func__, "Erase command recvd. for partition with name: %s", arg_partition_buf);
+        LOGD(__func__, "Erase command recvd. for partition with name: %s", arg_partition_buf);
         wanted_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_ANY,arg_partition_buf);
         err = esp_partition_erase_range(wanted_partition, 0, wanted_partition->size);
         if (err != ESP_OK) {
-            EHTTPD_LOGE(__func__, "erase partition failed! err=0x%x", err);
+            LOGE(__func__, "erase partition failed! err=0x%x", err);
         }
         else
         {
-            EHTTPD_LOGW(__func__, "Data partition: %s is erased now!  Must reboot to reformat it!", wanted_partition->label);
+            LOGW(__func__, "Data partition: %s is erased now!  Must reboot to reformat it!", wanted_partition->label);
             cJSON_AddStringToObject(jsroot, "erased", wanted_partition->label);
         }
     }

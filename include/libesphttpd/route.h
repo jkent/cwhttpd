@@ -10,7 +10,7 @@ extern "C" {
 
 #include "httpd.h"
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 # include <esp_event.h>
 #endif
 
@@ -158,26 +158,6 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn);
  * \endverbatim */
 ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn);
 
-/*************************
- * \section Espfs Routes
- *************************/
-
-/**
- * \brief Espfs GET route handler
- */
-ehttpd_status_t ehttpd_route_espfs_get(ehttpd_conn_t *conn);
-
-/**
- * \brief Espfs template route handler
- */
-ehttpd_status_t ehttpd_route_espfs_tpl(ehttpd_conn_t *conn);
-
-/**
- * \brief Espfs index route handler
- */
-ehttpd_status_t ehttpd_route_espfs_index(ehttpd_conn_t *conn);
-
-
 /****************************
  * \section Redirect Routes
  ****************************/
@@ -274,7 +254,7 @@ ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn);
  * \section WiFi Routes
  ************************/
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 esp_err_t ehttpd_wifi_init(void);
 void ehttpd_wifi_event_cb(system_event_t *event);
 ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg);
@@ -293,7 +273,7 @@ ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn);
  * \section Flash Routes
  *************************/
 
-#if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM)
 ehttpd_status_t ehttpd_route_fw_get_next(ehttpd_conn_t *conn);
 ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn);
 ehttpd_status_t ehttpd_route_fw_reboot(ehttpd_conn_t *conn);

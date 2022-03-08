@@ -39,7 +39,7 @@ ehttpd_mutex_t *ehttpd_mutex_create(bool recursive)
 {
     ehttpd_mutex_t *mutex = (ehttpd_mutex_t *) malloc(sizeof(ehttpd_mutex_t));
     if (mutex == NULL) {
-        EHTTPD_LOGE(__func__, "malloc failed");
+        LOGE(__func__, "malloc failed");
         return NULL;
     }
 
@@ -142,7 +142,7 @@ ehttpd_thread_t *ehttpd_thread_create(ehttpd_thread_func_t fn,
 {
     ehttpd_thread_t *thread = (ehttpd_thread_t *) malloc(sizeof(ehttpd_thread_t));
     if (thread == NULL) {
-        EHTTPD_LOGE(__func__, "malloc failed");
+        LOGE(__func__, "malloc failed");
         return NULL;
     }
 
@@ -150,7 +150,7 @@ ehttpd_thread_t *ehttpd_thread_create(ehttpd_thread_func_t fn,
     thread->arg = arg;
 
     if (pthread_create(&thread->pthread, NULL, thread_handler, thread) != 0) {
-        EHTTPD_LOGE(__func__, "pthread_create error");
+        LOGE(__func__, "pthread_create error");
         return NULL;
     }
 
@@ -194,7 +194,7 @@ ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
     struct ehttpd_timer_t *timer =
             (struct ehttpd_timer_t *) calloc(1, sizeof(struct ehttpd_timer_t));
     if (timer == NULL) {
-        EHTTPD_LOGE(__func__, "calloc failed");
+        LOGE(__func__, "calloc failed");
         return NULL;
     }
 
@@ -213,7 +213,7 @@ ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
     event.sigev_value.sival_ptr = timer;
 
     if(timer_create(CLOCK_MONOTONIC, &event, &timer->handle) < 0) {
-        EHTTPD_LOGE(__func__, "timer_create failed");
+        LOGE(__func__, "timer_create failed");
         free(timer);
         return NULL;
     }
@@ -224,7 +224,7 @@ ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
 void ehttpd_timer_start(ehttpd_timer_t *timer)
 {
     if (timer_settime(timer->handle, 0, &timer->ts, NULL) < 0) {
-        EHTTPD_LOGE(__func__, "timer_settime failed");
+        LOGE(__func__, "timer_settime failed");
     }
 }
 
@@ -232,7 +232,7 @@ void ehttpd_timer_stop(ehttpd_timer_t *timer)
 {
     struct itimerspec ts = {};
     if (timer_settime(timer->handle, 0, &ts, NULL) < 0) {
-        EHTTPD_LOGE(__func__, "timer_settime failed");
+        LOGE(__func__, "timer_settime failed");
     }
 }
 

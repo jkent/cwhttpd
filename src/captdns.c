@@ -233,17 +233,17 @@ void ehttpd_captdns_thread(void *arg)
         pi += sizeof(dns_header_t);
 
         if (msglen > DNS_LEN || msglen < sizeof(dns_header_t)) {
-            EHTTPD_LOGD(__func__, "invalid packet length");
+            LOGD(__func__, "invalid packet length");
             return;
         }
 
         if (hdr->ancount || hdr->nscount) {
-            EHTTPD_LOGD(__func__, "ignoring reply");
+            LOGD(__func__, "ignoring reply");
             return;
         }
 
         if (hdr->flags & FLAG_TC) {
-            EHTTPD_LOGD(__func__, "message truncated");
+            LOGD(__func__, "message truncated");
             return;
         }
 
@@ -333,12 +333,12 @@ ehttpd_captdns_t *ehttpd_captdns_start(const char *addr)
 {
     ehttpd_captdns_t *captdns = calloc(1, sizeof(ehttpd_captdns_t));
     if (captdns == NULL) {
-        EHTTPD_LOGE(__func__, "calloc");
+        LOGE(__func__, "calloc");
         return NULL;
     }
 
     if ((captdns->fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        EHTTPD_LOGE(__func__, "failed to create sock");
+        LOGE(__func__, "failed to create sock");
         goto err;
     }
 
@@ -359,16 +359,16 @@ ehttpd_captdns_t *ehttpd_captdns_start(const char *addr)
 
     if (bind(captdns->fd, (struct sockaddr *) &captdns->addr,
             sizeof(captdns->addr)) < 0) {
-        EHTTPD_LOGE(__func__, "unable to bind to UDP %s", addr);
+        LOGE(__func__, "unable to bind to UDP %s", addr);
         goto err;
         return NULL;
     }
-    EHTTPD_LOGI(__func__, "bound to UDP %s", addr);
+    LOGI(__func__, "bound to UDP %s", addr);
 
     captdns->thread = ehttpd_thread_create(ehttpd_captdns_thread, captdns,
             NULL);
     if (captdns->thread == NULL) {
-        EHTTPD_LOGE(__func__, "thread");
+        LOGE(__func__, "thread");
         goto err;
     }
 

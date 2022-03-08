@@ -8,9 +8,9 @@ a tiny template engine, websockets, a captive portal, and more.
 # Example
 
 There is a [unified example](https://github.com/jkent/esphttpd-example) that
-works on ESP8266, ESP32 and Linux. It shows how to use libesphttpd, serve
-files, use websocks and in the case of the espressif devices it also shows how
-to associate WiFi and do flash updates.
+works on ESP8266, ESP32 and Linux. It shows how to use libesphttpd with
+FrogFS, serve files, use websocks and in the case of the espressif devices it
+also shows how to associate WiFi and do flash updates.
 
 # Using With ESP8266_RTOS_SDK or ESP-IDF
 
@@ -21,11 +21,11 @@ the correct location you should see a **libesphttpd** entry under
 
 # TLS Support
 
-libesphttpd supports https under FreeRTOS via MbedTLS or OpenSSL. Server and
-client certificates are supported.
+libesphttpd supports https under FreeRTOS via MbedTLS. Both server and client
+certificates are supported.
 
-Enable **EHTTPD_TLS_MBEDTLS** or **EHTTPD_SSL_OPENSSL** during project
-configuration.
+Enable **EHTTPD_MBEDTLS** during project configuration. Note that this alone
+does not enable https, you need to start a server with http support.
 
 # Programming Guide
 
@@ -54,7 +54,7 @@ of arguments.  Some examples:
 ```c
     ehttpd_route_append(inst, "/", ehttpd_route_redirect, 1, "/index.cgi");
     ehttpd_route_append(inst, "/index.cgi", my_route_function, 0);
-    ehttpd_route_append(isnt, "*", ehttpd_route_fs_get, 1, "/spiffs");
+    ehttpd_route_append(inst, "*", ehttpd_route_fs_get, 1, "/spiffs");
 ```
 
 Route paths must be string literals or allocated on the heap because they are
@@ -69,7 +69,7 @@ finds a path that matches. The matching route handler runs and has an
 opportunity to handle the request. If it returns `EHTTPD_STATUS_NOTFOUND`,
 list traversal continues until the next path match occurs. If the end of the
 list is hit, {c:func}`ehttpd_route_404()` is called. This function is defined
-with \_\_attribute\_\_((\_\_weak\_\_)) so you can re-define it in your own
+with \_\_attribute\_\_((\_\_weak\_\_)) so you can re-define it within your own
 code.
 
 Paths can have simple wildcard matching. An asterik at the end of a path
