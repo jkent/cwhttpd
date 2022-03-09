@@ -1,17 +1,17 @@
 Mutex
 =====
 
-`libesphttpd/port.h`
+`cwhttpd/port.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_mutex_create
-.. doxygenfunction:: ehttpd_mutex_lock
-.. doxygenfunction:: ehttpd_mutex_unlock
-.. doxygenfunction:: ehttpd_mutex_delete
+.. doxygenfunction:: cwhttpd_mutex_create
+.. doxygenfunction:: cwhttpd_mutex_lock
+.. doxygenfunction:: cwhttpd_mutex_unlock
+.. doxygenfunction:: cwhttpd_mutex_delete
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_mutex_t
+.. doxygentypedef:: cwhttpd_mutex_t

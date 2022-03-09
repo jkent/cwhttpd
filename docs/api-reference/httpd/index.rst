@@ -1,7 +1,7 @@
 HTTP Server
 ===========
 
-`libesphttpd/httpd.h`
+`cwhttpd/httpd.h`
 
 .. toctree::
    :maxdepth: 2

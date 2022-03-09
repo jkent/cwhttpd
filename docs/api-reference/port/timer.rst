@@ -1,18 +1,18 @@
 Timer
 =====
 
-`libesphttpd/port.h`
+`cwhttpd/port.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_timer_create
-.. doxygenfunction:: ehttpd_timer_start
-.. doxygenfunction:: ehttpd_timer_stop
-.. doxygenfunction:: ehttpd_timer_delete
+.. doxygenfunction:: cwhttpd_timer_create
+.. doxygenfunction:: cwhttpd_timer_start
+.. doxygenfunction:: cwhttpd_timer_stop
+.. doxygenfunction:: cwhttpd_timer_delete
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_timer_handler_t
-.. doxygentypedef:: ehttpd_timer_t
+.. doxygentypedef:: cwhttpd_timer_handler_t
+.. doxygentypedef:: cwhttpd_timer_t

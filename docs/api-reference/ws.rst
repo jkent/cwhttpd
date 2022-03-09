@@ -1,28 +1,28 @@
 WebSocket
 =========
 
-`libesphttpd/ws.h`
+`cwhttpd/ws.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_ws_recv
-.. doxygenfunction:: ehttpd_ws_send
-.. doxygenfunction:: ehttpd_ws_close
-.. doxygenfunction:: ehttpd_ws_broadcast
+.. doxygenfunction:: cwhttpd_ws_recv
+.. doxygenfunction:: cwhttpd_ws_send
+.. doxygenfunction:: cwhttpd_ws_close
+.. doxygenfunction:: cwhttpd_ws_broadcast
 
 Structures
 ^^^^^^^^^^
 
-.. doxygenstruct:: ehttpd_ws_t
+.. doxygenstruct:: cwhttpd_ws_t
     :members:
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_ws_handler_t
+.. doxygentypedef:: cwhttpd_ws_handler_t
 
 Enumerations
 ^^^^^^^^^^^^
 
-.. doxygenenum:: ehttpd_ws_flags_t
+.. doxygenenum:: cwhttpd_ws_flags_t

@@ -1,4 +1,4 @@
-# Libesphttpd Flash-API
+# Clockwise HTTPd Flash-API
 
 Functions to flash firmware Over-The-Air.  These are only useful if you have enabled OTA support.
 
@@ -11,28 +11,28 @@ See the example js/html code for the GUI here: https://github.com/chmorgan/espht
 
 ## Functions defined in cgiflash.h
 
-* __ehttpd_route_fw_get_next()__
+* __cwhttpd_route_fw_get_next()__
 Legacy function for ESP8266 (not needed for ESP32)
 
-* __ehttpd_route_fw_upload()__
+* __cwhttpd_route_fw_upload()__
 route handler writes HTTP POST data to flash.
 
-* __ehttpd_route_fw_reboot()__
+* __cwhttpd_route_fw_reboot()__
 route handler reboots the ESP firmware after a short time-delay.
 
-* __ehttpd_route_fw_set_boot()__
+* __cwhttpd_route_fw_set_boot()__
 route handler to change the selected boot partition.
 
-* __ehttpd_route_fw_erase_flash()__
+* __cwhttpd_route_fw_erase_flash()__
 route handler to erase flash memory.  (only supports erasing data partitions)
 
-* __ehttpd_route_fw_get_flash_info()__
+* __cwhttpd_route_fw_get_flash_info()__
 route handler returns a JSON object describing the partition table.  It can also verify the firmware images, but not by default because that process takes several seconds.
 
 ## Configuration Options
 
 * __Allow OTA of Factory Partition (not recommended)__
-Defines CONFIG_EHTTPD_FW_OTA_FACTORY.  This option allows ehttpd_route_fw_upload() (in cgiflash.c) to write to the Factory partition.  It it not recommended for production use.  It is useful if you need to update the factory app via OTA for some reason.  To use it, build this project with CONFIG_EHTTPD_FW_OTA_FACTORY and upload it to one of the OTA partitions on your device.  Then reboot your device into that OTA and then you will be able to upload an image to the factory partition.
+Defines CONFIG_CWHTTPD_FW_OTA_FACTORY.  This option allows cwhttpd_route_fw_upload() (in cgiflash.c) to write to the Factory partition.  It it not recommended for production use.  It is useful if you need to update the factory app via OTA for some reason.  To use it, build this project with CONFIG_CWHTTPD_FW_OTA_FACTORY and upload it to one of the OTA partitions on your device.  Then reboot your device into that OTA and then you will be able to upload an image to the factory partition.
 
 ## HTTP REST API
 

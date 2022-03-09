@@ -8,8 +8,8 @@ Some flash handling route handler routines. Used for updating the ESPFS/OTA imag
 
 #include "esp32_flash.h"
 #include "log.h"
-#include "libesphttpd/port.h"
-#include "libesphttpd/route.h"
+#include "cwhttpd/port.h"
+#include "cwhttpd/route.h"
 
 #include <cJSON.h>
 #include <esp_flash_partitions.h>
@@ -62,28 +62,28 @@ static int check_espfs_header(void *buf)
 
 
 // route handler to query which firmware needs to be uploaded next
-ehttpd_status_t ehttpd_route_fw_get_next(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fw_get_next(cwhttpd_conn_t *conn)
 {
     if (conn->closed) {
         //Connection aborted. Clean up.
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
     //Doesn't matter, we have a MMU to remap memory, so we only have one firmware image.
     uint8_t id = 0;
-    ehttpd_response(conn, 200);
-    ehttpd_send_header(conn, "Content-Type", "text/plain");
-    ehttpd_send_header(conn, "Content-Length", "9");
-    ehttpd_end_headers(conn);
+    cwhttpd_response(conn, 200);
+    cwhttpd_send_header(conn, "Content-Type", "text/plain");
+    cwhttpd_send_header(conn, "Content-Length", "9");
+    cwhttpd_end_headers(conn);
     const char *next = id == 1 ? "user1.bin" : "user2.bin";
-    ehttpd_send(conn, (uint8_t *) next, -1);
+    cwhttpd_send(conn, (uint8_t *) next, -1);
     LOGD(__func__, "Next firmware: %s (got %d)", next, id);
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 //route handler that allows the firmware to be replaced via http POST This takes
 //a direct POST from e.g. Curl or a Javascript AJAX call with either the
-//firmware given by ehttpd_route_fw_get_next or an OTA upgrade image.
+//firmware given by cwhttpd_route_fw_get_next or an OTA upgrade image.
 
 //Because we don't have the buffer to allocate an entire sector but will
 //have to buffer some data because the post buffer may be misaligned, we
@@ -116,26 +116,26 @@ typedef struct {
 } UploadState;
 
 
-static void json_response(ehttpd_conn_t *conn, cJSON *jsroot){
+static void json_response(cwhttpd_conn_t *conn, cJSON *jsroot){
     char *json_string = NULL;
 
     //// Generate the header
     //We want the header to start with HTTP code 200, which means the document is found.
-    ehttpd_response(conn, 200);
-    ehttpd_send_header(conn, "Cache-Control", "no-store, must-revalidate, no-cache, max-age=0");
-    ehttpd_send_header(conn, "Expires", "Mon, 01 Jan 1990 00:00:00 GMT");  //  This one might be redundant, since modern browsers look for "Cache-Control".
-    ehttpd_send_header(conn, "Content-Type", "application/json; charset=utf-8"); //We are going to send some JSON.
-    ehttpd_end_headers(conn);
+    cwhttpd_response(conn, 200);
+    cwhttpd_send_header(conn, "Cache-Control", "no-store, must-revalidate, no-cache, max-age=0");
+    cwhttpd_send_header(conn, "Expires", "Mon, 01 Jan 1990 00:00:00 GMT");  //  This one might be redundant, since modern browsers look for "Cache-Control".
+    cwhttpd_send_header(conn, "Content-Type", "application/json; charset=utf-8"); //We are going to send some JSON.
+    cwhttpd_end_headers(conn);
     json_string = cJSON_Print(jsroot);
     if (json_string) {
-        ehttpd_send(conn, (uint8_t *) json_string, -1);
+        cwhttpd_send(conn, (uint8_t *) json_string, -1);
         cJSON_free(json_string);
     }
     cJSON_Delete(jsroot);
 }
 
 
-ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fw_upload(cwhttpd_conn_t *conn)
 {
     CgiUploadFlashDef *def=(CgiUploadFlashDef *) conn->route->arg;
     UploadState *state=(UploadState *) conn->user;
@@ -144,11 +144,11 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
     if (conn->closed) {
         //Connection aborted. Clean up.
         if (state!=NULL) free(state);
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     if (conn->post == NULL) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
     if (state == NULL) {
@@ -157,7 +157,7 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
         state = malloc(sizeof(UploadState));
         if (state==NULL) {
             LOGE(__func__, "Can't allocate firmware upload struct");
-            return EHTTPD_STATUS_DONE;
+            return CWHTTPD_STATUS_DONE;
         }
         memset(state, 0, sizeof(UploadState));
 
@@ -188,7 +188,7 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
         size_t len;
 //// HTTP GET queryParameter "partition" : string
         len = sizeof(arg_partition_buf);
-        len = ehttpd_find_param("partition", conn->route->arg, arg_partition_buf, &len);
+        len = cwhttpd_find_param("partition", conn->route->arg, arg_partition_buf, &len);
         if (len > 0)
         {
             state->update_partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP,ESP_PARTITION_SUBTYPE_ANY,arg_partition_buf);
@@ -228,7 +228,7 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
                 {
                     LOGI(__func__, "Writing to partition subtype %d at offset 0x%x", state->update_partition->subtype, state->update_partition->address);
 
-#ifdef CONFIG_EHTTPD_FW_OTA_FACTORY
+#ifdef CONFIG_CWHTTPD_FW_OTA_FACTORY
                     // hack the API to allow write to the factory partition!
                     if (PARTITION_IS_FACTORY(state->update_partition))
                     {
@@ -327,14 +327,14 @@ ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn)
         free(state);
 
         json_response(conn, jsroot); // Send the json response!
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
-    return EHTTPD_STATUS_MORE;
+    return CWHTTPD_STATUS_MORE;
 }
 
 
-static ehttpd_timer_t *resetTimer;
+static cwhttpd_timer_t *resetTimer;
 
 static void resetTimerCb(void *arg)
 {
@@ -343,11 +343,11 @@ static void resetTimerCb(void *arg)
 
 
 // Handle request to reboot into the new firmware
-ehttpd_status_t ehttpd_route_fw_reboot(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fw_reboot(cwhttpd_conn_t *conn)
 {
     if (conn->closed) {
         //Connection aborted. Clean up.
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
     cJSON *jsroot = cJSON_CreateObject();
 
@@ -356,22 +356,22 @@ ehttpd_status_t ehttpd_route_fw_reboot(ehttpd_conn_t *conn)
     // valid firmware
 
     //Do reboot in a timer callback so we still have time to send the response.
-    resetTimer = ehttpd_timer_create(500, false, resetTimerCb, NULL);
-    ehttpd_timer_start(resetTimer);
+    resetTimer = cwhttpd_timer_create(500, false, resetTimerCb, NULL);
+    cwhttpd_timer_start(resetTimer);
 
     cJSON_AddStringToObject(jsroot, "message", "Rebooting...");
     cJSON_AddBoolToObject(jsroot, "success", true);
     json_response(conn, jsroot); // Send the json response!
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 // Handle request to set boot flag
-ehttpd_status_t ehttpd_route_fw_set_boot(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fw_set_boot(cwhttpd_conn_t *conn)
 {
     if (conn->closed) {
         //Connection aborted. Clean up.
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
     const esp_partition_t *wanted_bootpart = NULL;
     const esp_partition_t *actual_bootpart = NULL;
@@ -382,7 +382,7 @@ ehttpd_status_t ehttpd_route_fw_set_boot(ehttpd_conn_t *conn)
     size_t len;
 //// HTTP GET queryParameter "partition" : string
     len = sizeof(arg_partition_buf);
-    len = ehttpd_find_param("partition", conn->route->arg, arg_partition_buf, &len);
+    len = cwhttpd_find_param("partition", conn->route->arg, arg_partition_buf, &len);
     if (len > 0)
     {
         LOGD(__func__, "Set Boot Command recvd. for partition with name: %s", arg_partition_buf);
@@ -398,16 +398,16 @@ ehttpd_status_t ehttpd_route_fw_set_boot(ehttpd_conn_t *conn)
     cJSON_AddBoolToObject(jsroot, "success", (wanted_bootpart == NULL || wanted_bootpart == actual_bootpart));
 
     json_response(conn, jsroot); // Send the json response!
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 // Handle request to format a data partition
-ehttpd_status_t ehttpd_route_fw_erase_flash(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fw_erase_flash(cwhttpd_conn_t *conn)
 {
     if (conn->closed) {
         //Connection aborted. Clean up.
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
     const esp_partition_t *wanted_partition = NULL;
     cJSON *jsroot = cJSON_CreateObject();
@@ -418,7 +418,7 @@ ehttpd_status_t ehttpd_route_fw_erase_flash(ehttpd_conn_t *conn)
     size_t len;
 //// HTTP GET queryParameter "partition" : string
     len = sizeof(arg_partition_buf);
-    len = ehttpd_find_param("verify", conn->route->arg, arg_partition_buf, &len);
+    len = cwhttpd_find_param("verify", conn->route->arg, arg_partition_buf, &len);
     if (len > 0)
     {
         LOGD(__func__, "Erase command recvd. for partition with name: %s", arg_partition_buf);
@@ -437,7 +437,7 @@ ehttpd_status_t ehttpd_route_fw_erase_flash(ehttpd_conn_t *conn)
     cJSON_AddBoolToObject(jsroot, "success", (err == ESP_OK));
 
     json_response(conn, jsroot); // Send the json response!
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 
 
@@ -464,11 +464,11 @@ static int check_partition_valid_app(const esp_partition_t *partition)
 
 
 // route handler to query info about partitions and firmware
-ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fw_get_flash_info(cwhttpd_conn_t *conn)
 {
     if (conn->closed) {
         //Connection aborted. Clean up.
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
     const esp_partition_t *running_partition = NULL;
     const esp_partition_t *boot_partition = NULL;
@@ -481,7 +481,7 @@ ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn)
     bool get_app = true;  // get both app and data partitions by default
     bool get_data = true;
     len = sizeof(arg_1_buf);
-    len = ehttpd_find_param("ptype", conn->route->arg, arg_1_buf, &len);
+    len = cwhttpd_find_param("ptype", conn->route->arg, arg_1_buf, &len);
     if (len > 0)
     {
         if (strcmp(arg_1_buf, "app") == 0)
@@ -496,7 +496,7 @@ ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn)
 //// HTTP GET queryParameter "verify"    : number 0,1
     bool verify_app = false;  // default don't verfiy apps, because it takes a long time.
     len = sizeof(arg_1_buf);
-    len = ehttpd_find_param("verify", conn->route->arg, arg_1_buf, &len);
+    len = cwhttpd_find_param("verify", conn->route->arg, arg_1_buf, &len);
     if (len > 0) {
         char ch;  // dummy to test for malformed input
         int val;
@@ -509,7 +509,7 @@ ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn)
 //// HTTP GET queryParameter "partition" : string
     bool specify_partname = false;
     len = sizeof(arg_1_buf);
-    len = ehttpd_find_param("partition", conn->route->arg, arg_1_buf, &len);
+    len = cwhttpd_find_param("partition", conn->route->arg, arg_1_buf, &len);
     if (len > 0)
     {
         specify_partname = true;
@@ -544,7 +544,7 @@ ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn)
                 {
                     cJSON_AddStringToObject(partj, "version", "");
                 }
-#ifdef CONFIG_EHTTPD_FW_OTA_FACTORY
+#ifdef CONFIG_CWHTTPD_FW_OTA_FACTORY
                 cJSON_AddBoolToObject(partj, "ota", true);
 #else
                 cJSON_AddBoolToObject(partj, "ota", PARTITION_IS_OTA(it_partition));
@@ -583,5 +583,5 @@ ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn)
     }
     cJSON_AddBoolToObject(jsroot, "success", true);
     json_response(conn, jsroot); // Send the json response!
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }

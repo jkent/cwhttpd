@@ -15,8 +15,8 @@ import sys
 
 # -- Project information -----------------------------------------------------
 
-project = 'libesphttpd'
-copyright = '2021, libesphttpd contributors'
+project = 'Clockwise HTTPd'
+copyright = '2022, Clockwise HTTPd contributors'
 author = 'Jeff Kent <jeff@jkent.net>'
 
 # -- General configuration ------------------------------------------------
@@ -37,8 +37,8 @@ extensions = [
 # Doxygen regenerates files in 'xml/' directory every time,
 # but we copy files to 'xml_in/' only when they change, to speed up
 # incremental builds.
-breathe_projects = { 'libesphttpd': '_build/xml' }
-breathe_default_project = 'libesphttpd'
+breathe_projects = { 'Clockwise HTTPd': '_build/xml' }
+breathe_default_project = 'Clockwise HTTPd'
 breathe_domain_by_extension = {
     'h': 'c',
 }

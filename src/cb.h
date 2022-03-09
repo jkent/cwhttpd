@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "libesphttpd/httpd.h"
+#include "cwhttpd/httpd.h"
 
 // New connection callback
-void ehttpd_new_conn_cb(
-    ehttpd_conn_t *conn
+void cwhttpd_new_conn_cb(
+    cwhttpd_conn_t *conn
 );

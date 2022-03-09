@@ -8,8 +8,8 @@
 
 #include "cb.h"
 #include "log.h"
-#include "libesphttpd/httpd.h"
-#include "libesphttpd/httpd_priv.h"
+#include "cwhttpd/httpd.h"
+#include "cwhttpd/httpd_priv.h"
 
 #include <assert.h>
 #include <stdarg.h>
@@ -26,11 +26,11 @@
  * \section Instance Functions
  *******************************/
 
-void ehttpd_route_vinsert(ehttpd_inst_t *inst, ssize_t index, const char *path,
-        ehttpd_route_handler_t handler, size_t argc, va_list args)
+void cwhttpd_route_vinsert(cwhttpd_inst_t *inst, ssize_t index, const char *path,
+        cwhttpd_route_handler_t handler, size_t argc, va_list args)
 {
-    ehttpd_route_t *new_route = calloc(1,
-            sizeof(ehttpd_route_t) + (sizeof(void *) * argc));
+    cwhttpd_route_t *new_route = calloc(1,
+            sizeof(cwhttpd_route_t) + (sizeof(void *) * argc));
     if (new_route == NULL) {
         return;
     }
@@ -54,7 +54,7 @@ void ehttpd_route_vinsert(ehttpd_inst_t *inst, ssize_t index, const char *path,
         inst->route_tail->next = new_route;
         inst->route_tail = new_route;
     } else {
-        ehttpd_route_t *route = inst->route_head;
+        cwhttpd_route_t *route = inst->route_head;
         for (int i = 0; i < index - 1; i++) {
             route = route->next;
         }
@@ -71,27 +71,27 @@ void ehttpd_route_vinsert(ehttpd_inst_t *inst, ssize_t index, const char *path,
     inst->num_routes++;
 }
 
-void ehttpd_route_insert(ehttpd_inst_t *inst, ssize_t index, const char *path,
-        ehttpd_route_handler_t handler, size_t argc, ...)
+void cwhttpd_route_insert(cwhttpd_inst_t *inst, ssize_t index, const char *path,
+        cwhttpd_route_handler_t handler, size_t argc, ...)
 {
     va_list args;
 
     va_start(args, argc);
-    ehttpd_route_vinsert(inst, index, path, handler, argc, args);
+    cwhttpd_route_vinsert(inst, index, path, handler, argc, args);
     va_end(args);
 }
 
-void ehttpd_route_append(ehttpd_inst_t *inst, const char *path,
-        ehttpd_route_handler_t handler, size_t argc, ...)
+void cwhttpd_route_append(cwhttpd_inst_t *inst, const char *path,
+        cwhttpd_route_handler_t handler, size_t argc, ...)
 {
     va_list args;
 
     va_start(args, argc);
-    ehttpd_route_vinsert(inst, inst->num_routes, path, handler, argc, args);
+    cwhttpd_route_vinsert(inst, inst->num_routes, path, handler, argc, args);
     va_end(args);
 }
 
-ehttpd_route_t *ehttpd_route_get(ehttpd_inst_t *inst, ssize_t index)
+cwhttpd_route_t *cwhttpd_route_get(cwhttpd_inst_t *inst, ssize_t index)
 {
     if (inst->num_routes == 0) {
         return NULL;
@@ -104,14 +104,14 @@ ehttpd_route_t *ehttpd_route_get(ehttpd_inst_t *inst, ssize_t index)
         index = inst->num_routes - 1;
     }
 
-    ehttpd_route_t *route = inst->route_head;
+    cwhttpd_route_t *route = inst->route_head;
     for (int i = 0; i < index - 1; i++) {
         route = route->next;
     }
     return route;
 }
 
-void ehttpd_route_remove(ehttpd_inst_t *inst, ssize_t index)
+void cwhttpd_route_remove(cwhttpd_inst_t *inst, ssize_t index)
 {
     if (inst->num_routes == 0) {
         return;
@@ -124,7 +124,7 @@ void ehttpd_route_remove(ehttpd_inst_t *inst, ssize_t index)
         index = inst->num_routes - 1;
     }
 
-    ehttpd_route_t *route = inst->route_head;
+    cwhttpd_route_t *route = inst->route_head;
     if (index == 0) {
         inst->route_head = route->next;
         if (inst->num_routes == 2) {
@@ -136,7 +136,7 @@ void ehttpd_route_remove(ehttpd_inst_t *inst, ssize_t index)
         for (int i = 0; i < index - 1; i++) {
             route = route->next;
         }
-        ehttpd_route_t *temp = route->next;
+        cwhttpd_route_t *temp = route->next;
         route->next = route->next->next;
         if (index == inst->num_routes - 1) {
             inst->route_tail = route;
@@ -153,7 +153,7 @@ void ehttpd_route_remove(ehttpd_inst_t *inst, ssize_t index)
  * \section Connection Functions
  *********************************/
 
-ssize_t ehttpd_recv(ehttpd_conn_t *conn, void *buf, size_t len)
+ssize_t cwhttpd_recv(cwhttpd_conn_t *conn, void *buf, size_t len)
 {
     size_t datalen = conn->priv.data - conn->priv.req - conn->priv.req_len;
     if (datalen > 0) {
@@ -163,10 +163,10 @@ ssize_t ehttpd_recv(ehttpd_conn_t *conn, void *buf, size_t len)
         return len;
     }
 
-    return ehttpd_plat_recv(conn, buf, len);
+    return cwhttpd_plat_recv(conn, buf, len);
 }
 
-ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
+ssize_t cwhttpd_send(cwhttpd_conn_t *conn, const void *buf, ssize_t len)
 {
     if (len < 0) {
         len = strlen(buf);
@@ -175,20 +175,20 @@ ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
     if (!(conn->priv.flags & HFL_SENT_HEADERS)) {
         /* End headers if we're sending data */
         if (conn->priv.flags & HFL_SEND_CHUNKED) {
-            ehttpd_send_header(conn, "Transfer-Encoding", "chunked");
+            cwhttpd_send_header(conn, "Transfer-Encoding", "chunked");
         }
         if (conn->priv.flags & HFL_REQUEST_CLOSE) {
-            ehttpd_send_header(conn, "Connection", "close");
+            cwhttpd_send_header(conn, "Connection", "close");
         } else if (!(conn->priv.flags & HFL_SENT_CONTENT_LENGTH)) {
             if (!(conn->priv.flags & HFL_SEND_CHUNKED)) {
                 if (conn->priv.flags & HFL_RECEIVED_HTTP11) {
-                    ehttpd_send_header(conn, "Connection", "close");
+                    cwhttpd_send_header(conn, "Connection", "close");
                 }
             }
         } else if (conn->priv.flags & HFL_RECEIVED_CONN_ALIVE) {
-            ehttpd_send_header(conn, "Connection", "keep-alive");
+            cwhttpd_send_header(conn, "Connection", "keep-alive");
         }
-        ehttpd_plat_send(conn, "\r\n", 2);
+        cwhttpd_plat_send(conn, "\r\n", 2);
         conn->priv.flags |= HFL_SENT_HEADERS;
     }
 
@@ -199,7 +199,7 @@ ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
         if (!(conn->priv.flags & HFL_SENDING_CHUNK)) {
             end_chunk = true;
             conn->priv.chunk_left = len;
-            ret = ehttpd_chunk_start(conn, len);
+            ret = cwhttpd_chunk_start(conn, len);
             if (ret < 0) {
                 return ret;
             }
@@ -210,13 +210,13 @@ ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
             return -1;
         }
         conn->priv.chunk_left -= len;
-        ret = ehttpd_plat_send(conn, buf, len);
+        ret = cwhttpd_plat_send(conn, buf, len);
         if (ret < 0) {
             return ret;
         }
         count += ret;
         if (end_chunk) {
-            ret = ehttpd_chunk_end(conn);
+            ret = cwhttpd_chunk_end(conn);
             if (ret < 0) {
                 return ret;
             }
@@ -224,7 +224,7 @@ ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
         }
     } else {
         conn->priv.chunk_left -= len;
-        count = ehttpd_plat_send(conn, buf, len);
+        count = cwhttpd_plat_send(conn, buf, len);
     }
 
     if (len == 0) {
@@ -234,12 +234,12 @@ ssize_t ehttpd_send(ehttpd_conn_t *conn, const void *buf, ssize_t len)
     return count;
 }
 
-ssize_t ehttpd_sendf(ehttpd_conn_t *conn, const char *fmt, ...)
+ssize_t cwhttpd_sendf(cwhttpd_conn_t *conn, const char *fmt, ...)
 {
     va_list va;
 
     va_start(va, fmt);
-    size_t len = ehttpd_vsnprintf(NULL, 0, fmt, va);
+    size_t len = cwhttpd_vsnprintf(NULL, 0, fmt, va);
     va_end(va);
 
     char *buf = malloc(len + 1);
@@ -248,20 +248,20 @@ ssize_t ehttpd_sendf(ehttpd_conn_t *conn, const char *fmt, ...)
     }
 
     va_start(va, fmt);
-    ehttpd_vsnprintf(buf, len + 1, fmt, va);
+    cwhttpd_vsnprintf(buf, len + 1, fmt, va);
     va_end(va);
 
     if (conn->priv.flags & HFL_SENDING_HEADER) {
-        ehttpd_plat_send(conn, buf, len);
+        cwhttpd_plat_send(conn, buf, len);
     } else {
-        ehttpd_send(conn, buf, len);
+        cwhttpd_send(conn, buf, len);
     }
 
     free(buf);
     return len;
 }
 
-const char *ehttpd_get_header(ehttpd_conn_t *conn, const char *name)
+const char *cwhttpd_get_header(cwhttpd_conn_t *conn, const char *name)
 {
     char *p = conn->request.headers;
     const char *value = NULL;
@@ -303,7 +303,7 @@ const char *ehttpd_get_header(ehttpd_conn_t *conn, const char *name)
     return value;
 }
 
-void ehttpd_set_chunked(ehttpd_conn_t *conn, bool enable)
+void cwhttpd_set_chunked(cwhttpd_conn_t *conn, bool enable)
 {
     if (conn->priv.flags & HFL_SENT_HEADERS) {
         LOGE(__func__, "headers already sent");
@@ -316,7 +316,7 @@ void ehttpd_set_chunked(ehttpd_conn_t *conn, bool enable)
     }
 }
 
-void ehttpd_set_close(ehttpd_conn_t *conn, bool close)
+void cwhttpd_set_close(cwhttpd_conn_t *conn, bool close)
 {
     if (conn->priv.flags & HFL_SENT_HEADERS) {
         LOGE(__func__, "headers already sent");
@@ -331,7 +331,7 @@ void ehttpd_set_close(ehttpd_conn_t *conn, bool close)
     }
 }
 
-ssize_t ehttpd_response(ehttpd_conn_t *conn, int code)
+ssize_t cwhttpd_response(cwhttpd_conn_t *conn, int code)
 {
     const char *message;
 
@@ -407,7 +407,7 @@ ssize_t ehttpd_response(ehttpd_conn_t *conn, int code)
 
     uint32_t flags = conn->priv.flags;
     conn->priv.flags |= HFL_SENDING_HEADER;
-    ssize_t r = ehttpd_sendf(conn, "HTTP/1.%d %d %s\r\n",
+    ssize_t r = cwhttpd_sendf(conn, "HTTP/1.%d %d %s\r\n",
             (conn->priv.flags & HFL_RECEIVED_HTTP11) ? 1 : 0, code, message);
     conn->priv.flags = flags | HFL_SENT_RESPONSE;
     if (r <= 0) {
@@ -415,7 +415,7 @@ ssize_t ehttpd_response(ehttpd_conn_t *conn, int code)
     }
     total = r;
 
-    r = ehttpd_send_header(conn, "Server", "ehttpd/" EHTTPD_VERSION);
+    r = cwhttpd_send_header(conn, "Server", "cwhttpd/" CWHTTPD_VERSION);
     if (r <= 0) {
         return r;
     }
@@ -424,7 +424,7 @@ ssize_t ehttpd_response(ehttpd_conn_t *conn, int code)
     return total;
 }
 
-ssize_t ehttpd_send_header(ehttpd_conn_t *conn, const char *name, const char *value)
+ssize_t cwhttpd_send_header(cwhttpd_conn_t *conn, const char *name, const char *value)
 {
     if (conn->priv.flags & HFL_SENT_HEADERS) {
         LOGE(__func__, "headers already sent");
@@ -443,13 +443,13 @@ ssize_t ehttpd_send_header(ehttpd_conn_t *conn, const char *name, const char *va
 
     uint32_t flags = conn->priv.flags;
     conn->priv.flags |= HFL_SENDING_HEADER;
-    ssize_t r = ehttpd_sendf(conn, "%s: %s\r\n", name, value);
+    ssize_t r = cwhttpd_sendf(conn, "%s: %s\r\n", name, value);
     conn->priv.flags = flags;
 
     return r;
 }
 
-ssize_t ehttpd_send_cache_header(ehttpd_conn_t *conn, const char *mime)
+ssize_t cwhttpd_send_cache_header(cwhttpd_conn_t *conn, const char *mime)
 {
     if (mime != NULL) {
         if (strcmp(mime, "text/html") == 0) {
@@ -466,11 +466,11 @@ ssize_t ehttpd_send_cache_header(ehttpd_conn_t *conn, const char *mime)
         }
     }
 
-    return ehttpd_send_header(conn, "Cache-Control",
+    return cwhttpd_send_header(conn, "Cache-Control",
             "max-age=7200, public, must-revalidate");
 }
 
-ssize_t ehttpd_chunk_start(ehttpd_conn_t *conn, size_t len)
+ssize_t cwhttpd_chunk_start(cwhttpd_conn_t *conn, size_t len)
 {
     if (!(conn->priv.flags & HFL_SEND_CHUNKED)) {
         return 0;
@@ -481,12 +481,12 @@ ssize_t ehttpd_chunk_start(ehttpd_conn_t *conn, size_t len)
     }
     conn->priv.flags |= HFL_SENDING_CHUNK;
     conn->priv.chunk_left = 10;
-    ssize_t ret = ehttpd_sendf(conn, "%x\r\n", len);
+    ssize_t ret = cwhttpd_sendf(conn, "%x\r\n", len);
     conn->priv.chunk_left = len;
     return ret;
 }
 
-ssize_t ehttpd_chunk_end(ehttpd_conn_t *conn)
+ssize_t cwhttpd_chunk_end(cwhttpd_conn_t *conn)
 {
     if (!(conn->priv.flags & HFL_SEND_CHUNKED)) {
         return 0;
@@ -496,7 +496,7 @@ ssize_t ehttpd_chunk_end(ehttpd_conn_t *conn)
         LOGE(__func__, "chunk framing");
         return -1;
     }
-    ssize_t ret = ehttpd_plat_send(conn, "\r\n", 2);
+    ssize_t ret = cwhttpd_plat_send(conn, "\r\n", 2);
     conn->priv.flags &= ~HFL_SENDING_CHUNK;
     return ret;
 }
@@ -507,22 +507,22 @@ ssize_t ehttpd_chunk_end(ehttpd_conn_t *conn)
  ******************************/
 
 __attribute__((__weak__))
-ehttpd_status_t ehttpd_route_404(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_404(cwhttpd_conn_t *conn)
 {
     LOGD(__func__, "%p", conn);
-    ehttpd_response(conn, 404);
-    ehttpd_send(conn, "file not found", -1);
-    return EHTTPD_STATUS_DONE;
+    cwhttpd_response(conn, 404);
+    cwhttpd_send(conn, "file not found", -1);
+    return CWHTTPD_STATUS_DONE;
 }
 
-void ehttpd_redirect(ehttpd_conn_t *conn, const char *url)
+void cwhttpd_redirect(cwhttpd_conn_t *conn, const char *url)
 {
-    ehttpd_response(conn, 302);
-    ehttpd_send_header(conn, "Location", url);
+    cwhttpd_response(conn, 302);
+    cwhttpd_send_header(conn, "Location", url);
 }
 
 // Returns a static char *to a mime type for a given url to a file.
-const char *ehttpd_get_mimetype(const char *url)
+const char *cwhttpd_get_mimetype(const char *url)
 {
     char *urlp = (char *) url;
     int i = 0;
@@ -558,7 +558,7 @@ static int decode_hex(char c)
     return 0;
 }
 
-size_t ehttpd_url_decode(const char *in, ssize_t in_len, char *out,
+size_t cwhttpd_url_decode(const char *in, ssize_t in_len, char *out,
         size_t *out_len)
 {
     if (in_len == -1) {
@@ -607,7 +607,7 @@ size_t ehttpd_url_decode(const char *in, ssize_t in_len, char *out,
     return out - out_start;
 }
 
-ssize_t ehttpd_find_param(const char *needle, const char *haystack, char *out,
+ssize_t cwhttpd_find_param(const char *needle, const char *haystack, char *out,
         size_t *out_len)
 {
     size_t needle_len = strlen(needle);
@@ -621,7 +621,7 @@ ssize_t ehttpd_find_param(const char *needle, const char *haystack, char *out,
             if (end == NULL) {
                 end = p + strlen(p);
             }
-            return ehttpd_url_decode(p, end - p, out, out_len);
+            return cwhttpd_url_decode(p, end - p, out, out_len);
         }
         p = strchr(p, '&');
         if (p != NULL) {
@@ -636,8 +636,8 @@ ssize_t ehttpd_find_param(const char *needle, const char *haystack, char *out,
  * \section Connection Handler
  *******************************/
 
-/* This list must be kept in sync with the ehttpd_method_t enum in httpd.h */
-static const char *ehttpd_methods[] = {
+/* This list must be kept in sync with the cwhttpd_method_t enum in httpd.h */
+static const char *cwhttpd_methods[] = {
     "GET",
     "POST",
     "OPTIONS",
@@ -646,7 +646,7 @@ static const char *ehttpd_methods[] = {
     "DELETE",
 };
 
-static bool parse_request(ehttpd_conn_t *conn)
+static bool parse_request(cwhttpd_conn_t *conn)
 {
     char *e = conn->priv.req;
     const char *method = e;
@@ -729,10 +729,10 @@ static bool parse_request(ehttpd_conn_t *conn)
 
     conn->request.headers = e;
 
-    for (conn->request.method = EHTTPD_METHOD_GET;
-            conn->request.method < EHTTPD_METHOD_UNKNOWN;
+    for (conn->request.method = CWHTTPD_METHOD_GET;
+            conn->request.method < CWHTTPD_METHOD_UNKNOWN;
             conn->request.method++) {
-        if (strcasecmp(method, ehttpd_methods[conn->request.method]) == 0) {
+        if (strcasecmp(method, cwhttpd_methods[conn->request.method]) == 0) {
             break;
         }
     }
@@ -740,7 +740,7 @@ static bool parse_request(ehttpd_conn_t *conn)
     return true;
 }
 
-static bool parse_headers(ehttpd_conn_t *conn)
+static bool parse_headers(cwhttpd_conn_t *conn)
 {
     const char *value;
     char *p = conn->request.headers;
@@ -760,15 +760,15 @@ static bool parse_headers(ehttpd_conn_t *conn)
         p++;
     }
 
-    conn->request.hostname = ehttpd_get_header(conn, "Host");
+    conn->request.hostname = cwhttpd_get_header(conn, "Host");
 
-    value = ehttpd_get_header(conn, "Content-Length");
+    value = cwhttpd_get_header(conn, "Content-Length");
     if (value != NULL) {
         if (conn->post == NULL) {
-            conn->post = calloc(1, sizeof(ehttpd_post_t));
+            conn->post = calloc(1, sizeof(cwhttpd_post_t));
             if (conn->post == NULL) {
                 LOGE(__func__, "calloc failed %d bytes",
-                        sizeof(ehttpd_post_t));
+                        sizeof(cwhttpd_post_t));
                 return false;
             }
         }
@@ -777,16 +777,16 @@ static bool parse_headers(ehttpd_conn_t *conn)
         }
     }
 
-    value = ehttpd_get_header(conn, "Content-Type");
+    value = cwhttpd_get_header(conn, "Content-Type");
     if (value != NULL) {
         if (strstr(value, "multipart/form-data")) {
             // It's multipart form data so let's pull out the boundary
             // TODO: implement multipart support in the server
             if (conn->post == NULL) {
-                conn->post = calloc(1, sizeof(ehttpd_post_t));
+                conn->post = calloc(1, sizeof(cwhttpd_post_t));
                 if (conn->post == NULL) {
                     LOGE(__func__, "calloc failed %d bytes",
-                            sizeof(ehttpd_post_t));
+                            sizeof(cwhttpd_post_t));
                     return false;
                 }
             }
@@ -801,7 +801,7 @@ static bool parse_headers(ehttpd_conn_t *conn)
         }
     }
 
-    value = ehttpd_get_header(conn, "Connection");
+    value = cwhttpd_get_header(conn, "Connection");
     if (value != NULL) {
         if (strstr(value, "keep-alive")) {
             conn->priv.flags |= HFL_RECEIVED_CONN_ALIVE;
@@ -813,9 +813,9 @@ static bool parse_headers(ehttpd_conn_t *conn)
     return true;
 }
 
-static const ehttpd_route_t route_404 = {NULL, ehttpd_route_404, NULL, 0};
+static const cwhttpd_route_t route_404 = {NULL, cwhttpd_route_404, NULL, 0};
 
-void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
+void cwhttpd_new_conn_cb(cwhttpd_conn_t *conn)
 {
     bool first_request = true;
 
@@ -825,7 +825,7 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
                 free(conn->post);
             }
             if (!(conn->priv.flags & HFL_CLOSE)) {
-                ehttpd_inst_t *inst = conn->inst;
+                cwhttpd_inst_t *inst = conn->inst;
                 memset(conn, 0, sizeof(*conn));
                 conn->inst = inst;
                 LOGV(__func__, "conn cleaned %p", conn);
@@ -833,8 +833,8 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
         }
         first_request = false;
 
-        ssize_t len = ehttpd_plat_recv(conn, conn->priv.req,
-                CONFIG_EHTTPD_MAX_REQUEST_SIZE);
+        ssize_t len = cwhttpd_plat_recv(conn, conn->priv.req,
+                CONFIG_CWHTTPD_MAX_REQUEST_SIZE);
         if (len <= 0) {
             return;
         }
@@ -842,7 +842,7 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
         conn->priv.data = strnstr(conn->priv.req, "\r\n\r\n",
                 conn->priv.req_len);
         if (conn->priv.data == NULL) {
-            ehttpd_response(conn, 400);
+            cwhttpd_response(conn, 400);
             return;
         }
 
@@ -852,29 +852,29 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
         conn->priv.data += 4;
 
         if (!parse_request(conn)) {
-            ehttpd_response(conn, 400);
+            cwhttpd_response(conn, 400);
             return;
         }
 
-#ifdef CONFIG_EHTTPD_ENABLE_CORS
+#ifdef CONFIG_CWHTTPD_ENABLE_CORS
         /* CORS preflight */
-        if (conn->method == EHTTPD_METHOD_OPTIONS) {
-            ehttpd_set_chunked(conn, false);
-            ehttpd_response(conn, 204);
-            ehttpd_send_header(conn, "Access-Control-Allow-Origin",
-                    CONFIG_EHTTPD_CORS_ORIGIN);
-            ehttpd_send_header(conn, "Access-Control-Allow-Methods",
-                    CONFIG_EHTTPD_CORS_METHODS);
+        if (conn->method == CWHTTPD_METHOD_OPTIONS) {
+            cwhttpd_set_chunked(conn, false);
+            cwhttpd_response(conn, 204);
+            cwhttpd_send_header(conn, "Access-Control-Allow-Origin",
+                    CONFIG_CWHTTPD_CORS_ORIGIN);
+            cwhttpd_send_header(conn, "Access-Control-Allow-Methods",
+                    CONFIG_CWHTTPD_CORS_METHODS);
             continue;
         }
 #endif
 
         if (!parse_headers(conn)) {
-            ehttpd_response(conn, 500);
+            cwhttpd_response(conn, 500);
             return;
         }
 
-        const ehttpd_route_t *route = conn->inst->route_head;
+        const cwhttpd_route_t *route = conn->inst->route_head;
         while (true) {
             while (route != NULL) {
                 if ((strcmp(route->path, conn->request.url) == 0) ||
@@ -891,26 +891,26 @@ void ehttpd_new_conn_cb(ehttpd_conn_t *conn)
                 conn->route = &route_404;
             }
 
-            ehttpd_status_t status = conn->route->handler(conn);
-            if ((status == EHTTPD_STATUS_NOTFOUND) ||
-                    (status == EHTTPD_STATUS_AUTHENTICATED)) {
+            cwhttpd_status_t status = conn->route->handler(conn);
+            if ((status == CWHTTPD_STATUS_NOTFOUND) ||
+                    (status == CWHTTPD_STATUS_AUTHENTICATED)) {
                 route = route->next;
-            }  else if (status == EHTTPD_STATUS_DONE) {
+            }  else if (status == CWHTTPD_STATUS_DONE) {
                 break;
-            } else if (status == EHTTPD_STATUS_CLOSE) {
+            } else if (status == CWHTTPD_STATUS_CLOSE) {
                 conn->priv.flags |= HFL_CLOSE;
                 break;
-            } else if (status == EHTTPD_STATUS_FAIL) {
+            } else if (status == CWHTTPD_STATUS_FAIL) {
                 return;
             }
         }
 
         if (conn->priv.flags & HFL_SEND_CHUNKED) {
             if (conn->priv.flags & HFL_SENDING_CHUNK) {
-                ehttpd_chunk_end(conn);
+                cwhttpd_chunk_end(conn);
             }
             if (!(conn->priv.flags & HFL_SENT_FINAL_CHUNK)) {
-                ehttpd_send(conn, NULL, 0);
+                cwhttpd_send(conn, NULL, 0);
             }
         } else if (conn->priv.flags & HFL_SENT_CONTENT_LENGTH) {
             if (conn->priv.chunk_left != 0) {

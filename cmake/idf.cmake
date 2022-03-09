@@ -2,12 +2,12 @@ include(${CMAKE_CURRENT_LIST_DIR}/files.cmake)
 
 idf_component_register(
 SRCS
-    ${ehttpd_SRC}
-    ${ehttpd_IDF_SRC}
+    ${cwhttpd_SRC}
+    ${cwhttpd_IDF_SRC}
 INCLUDE_DIRS
-    ${ehttpd_INC}
+    ${cwhttpd_INC}
 PRIV_REQUIRES
-    ${ehttpd_PRIV_REQ}
+    ${cwhttpd_IDF_PRIV_REQ}
 )
 
 if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../../frogfs)
@@ -17,11 +17,11 @@ if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../../frogfs)
     PUBLIC
         ${frogfs_SRC}
         ${frogfs_IDF_SRC}
-        ${frogfs_ehttpd_SRC}
+        ${frogfs_cwhttpd_SRC}
     )
     target_include_directories(${COMPONENT_LIB}
     PUBLIC
         ${frogfs_INC}
-        ${frogfs_ehttpd_INC}
+        ${frogfs_cwhttpd_INC}
     )
 endif()

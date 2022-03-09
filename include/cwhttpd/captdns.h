@@ -20,7 +20,7 @@ extern "C" {
 /**
  * \brief Opaque captdns instance type
  */
-typedef struct ehttpd_captdns_t ehttpd_captdns_t;
+typedef struct cwhttpd_captdns_t cwhttpd_captdns_t;
 
 /**
  * \brief Start the captdns service with custom bind
@@ -49,7 +49,7 @@ typedef struct ehttpd_captdns_t ehttpd_captdns_t;
  *     **http://esp.nonet** will be returned.
  *
  * \endverbatim */
-ehttpd_captdns_t *ehttpd_captdns_start(
+cwhttpd_captdns_t *cwhttpd_captdns_start(
     const char *addr /** [in] address:port to bind */
 );
 
@@ -59,12 +59,12 @@ ehttpd_captdns_t *ehttpd_captdns_start(
  * \par Description
  * \verbatim embed:rst:leading-asterisk
  *
- * This will be called automatically if **CONFIG_EHTTPD_USE_SHUTDOWN** is
+ * This will be called automatically if **CONFIG_CWHTTPD_USE_SHUTDOWN** is
  * enabled and a shutdown event occurs.
  *
  * \endverbatim */
-void ehttpd_captdns_shutdown(
-    ehttpd_captdns_t *captdns /** [in] captdns instance */
+void cwhttpd_captdns_shutdown(
+    cwhttpd_captdns_t *captdns /** [in] captdns instance */
 );
 
 

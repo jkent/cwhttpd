@@ -899,7 +899,7 @@ static int _vsnprintf(out_t out, char *buffer, const size_t maxlen,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-int ehttpd_sprintf(char *buffer, const char *format, ...)
+int cwhttpd_sprintf(char *buffer, const char *format, ...)
 {
     va_list va;
     va_start(va, format);
@@ -908,7 +908,7 @@ int ehttpd_sprintf(char *buffer, const char *format, ...)
     return ret;
 }
 
-int ehttpd_snprintf(char *buffer, size_t size, const char *format, ...)
+int cwhttpd_snprintf(char *buffer, size_t size, const char *format, ...)
 {
     va_list va;
     va_start(va, format);
@@ -917,7 +917,7 @@ int ehttpd_snprintf(char *buffer, size_t size, const char *format, ...)
     return ret;
 }
 
-int ehttpd_vsnprintf(char *buffer, size_t size, const char *format,
+int cwhttpd_vsnprintf(char *buffer, size_t size, const char *format,
         va_list va)
 {
     return _vsnprintf(_out_buffer, buffer, size, format, va);

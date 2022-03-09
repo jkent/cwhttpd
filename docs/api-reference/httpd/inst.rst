@@ -1,39 +1,39 @@
 Instance
 ========
 
-`libesphttpd/httpd.h`
+`cwhttpd/httpd.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_init
-.. doxygenfunction:: ehttpd_route_vinsert
-.. doxygenfunction:: ehttpd_route_insert
-.. doxygenfunction:: ehttpd_route_append
-.. doxygenfunction:: ehttpd_route_remove
-.. doxygenfunction:: ehttpd_route_get
-.. doxygenfunction:: ehttpd_set_cert_and_key
-.. doxygenfunction:: ehttpd_set_client_validation
-.. doxygenfunction:: ehttpd_add_client_cert
-.. doxygenfunction:: ehttpd_start
-.. doxygenfunction:: ehttpd_destroy
+.. doxygenfunction:: cwhttpd_init
+.. doxygenfunction:: cwhttpd_route_vinsert
+.. doxygenfunction:: cwhttpd_route_insert
+.. doxygenfunction:: cwhttpd_route_append
+.. doxygenfunction:: cwhttpd_route_remove
+.. doxygenfunction:: cwhttpd_route_get
+.. doxygenfunction:: cwhttpd_set_cert_and_key
+.. doxygenfunction:: cwhttpd_set_client_validation
+.. doxygenfunction:: cwhttpd_add_client_cert
+.. doxygenfunction:: cwhttpd_start
+.. doxygenfunction:: cwhttpd_destroy
 
 Structures
 ^^^^^^^^^^
 
-.. doxygenstruct:: ehttpd_route_t
+.. doxygenstruct:: cwhttpd_route_t
     :members:
 
-.. doxygenstruct:: ehttpd_inst_t
+.. doxygenstruct:: cwhttpd_inst_t
     :members:
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_route_handler_t
-.. doxygentypedef:: ehttpd_recv_handler_t
+.. doxygentypedef:: cwhttpd_route_handler_t
+.. doxygentypedef:: cwhttpd_recv_handler_t
 
 Enumerations
 ^^^^^^^^^^^^
 
-.. doxygenenum:: ehttpd_flags_t
+.. doxygenenum:: cwhttpd_flags_t

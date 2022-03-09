@@ -4,21 +4,21 @@
 
 #pragma once
 
-#include "libesphttpd/port.h"
+#include "cwhttpd/port.h"
 
 
-typedef struct ehttpd_ws_priv_t ehttpd_ws_priv_t;
-typedef struct ehttpd_ws_frame_t ehttpd_ws_frame_t;
-typedef struct ehttpd_ws_t ehttpd_ws_t;
+typedef struct cwhttpd_ws_priv_t cwhttpd_ws_priv_t;
+typedef struct cwhttpd_ws_frame_t cwhttpd_ws_frame_t;
+typedef struct cwhttpd_ws_t cwhttpd_ws_t;
 
-struct ehttpd_ws_frame_t {
+struct cwhttpd_ws_frame_t {
     uint8_t flags;
     uint8_t len8;
     uint64_t len;
     uint8_t mask[4];
 };
 
-struct ehttpd_ws_priv_t {
-    ehttpd_ws_frame_t frame;
-    ehttpd_ws_t *next; // in linked list
+struct cwhttpd_ws_priv_t {
+    cwhttpd_ws_frame_t frame;
+    cwhttpd_ws_t *next; // in linked list
 };

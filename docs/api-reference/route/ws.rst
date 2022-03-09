@@ -1,9 +1,9 @@
 WebSocket
 =========
 
-`libesphttpd/route.h`
+`cwhttpd/route.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_route_ws
+.. doxygenfunction:: cwhttpd_route_ws

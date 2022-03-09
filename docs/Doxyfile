@@ -13,7 +13,7 @@
 # https://www.stack.nl/~dimitri/doxygen/manual/config.html
 
 
-PROJECT_NAME = "libesphttpd Programming Guide"
+PROJECT_NAME = "Clockwise HTTPd Programming Guide"
 
 ## The 'INPUT' statement below is used as input by script 'gen-df-input.py'
 ## to automatically generate API reference list files heder_file.inc
@@ -21,15 +21,11 @@ PROJECT_NAME = "libesphttpd Programming Guide"
 ## and used to include in API reference documentation
 
 INPUT = \
-    ##
-    ## libesphttpd - API Reference
-    ##
-    ../include/libesphttpd/captdns.h \
-    ../include/libesphttpd/httpd.h \
-    ../include/libesphttpd/port.h \
-    ../include/libesphttpd/route.h \
-    ../include/libesphttpd/ws.h \
-    ##
+    ../include/cwhttpd/captdns.h \
+    ../include/cwhttpd/httpd.h \
+    ../include/cwhttpd/port.h \
+    ../include/cwhttpd/route.h \
+    ../include/cwhttpd/ws.h \
 
 ## Get warnings for functions that have no documentation for their parameters or return value
 ##
@@ -42,7 +38,7 @@ MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = \
     __attribute__(x)= \
-    CONFIG_EHTTPD_MBEDTLS=y \
+    CONFIG_CWHTTPD_MBEDTLS=y \
     ESP_PLATFORM=y
 
 ## Do not complain about not having dot

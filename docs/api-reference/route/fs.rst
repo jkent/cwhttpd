@@ -1,16 +1,16 @@
 Filesystem
 ==========
 
-`libesphttpd/route.h`
+`cwhttpd/route.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_route_fs_get
-.. doxygenfunction:: ehttpd_route_fs_tpl
-.. doxygenfunction:: ehttpd_route_fs_put
+.. doxygenfunction:: cwhttpd_route_fs_get
+.. doxygenfunction:: cwhttpd_route_fs_tpl
+.. doxygenfunction:: cwhttpd_route_fs_put
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_tpl_cb_t
+.. doxygentypedef:: cwhttpd_tpl_cb_t

@@ -1,21 +1,21 @@
 Thread
 ======
 
-`libesphttpd/port.h`
+`cwhttpd/port.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_thread_create
-.. doxygenfunction:: ehttpd_thread_delete
+.. doxygenfunction:: cwhttpd_thread_create
+.. doxygenfunction:: cwhttpd_thread_delete
 
 Structures
 ^^^^^^^^^^
 
-.. doxygenstruct:: ehttpd_thread_attr_t
+.. doxygenstruct:: cwhttpd_thread_attr_t
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_thread_func_t
-.. doxygentypedef:: ehttpd_thread_t
+.. doxygentypedef:: cwhttpd_thread_func_t
+.. doxygentypedef:: cwhttpd_thread_t

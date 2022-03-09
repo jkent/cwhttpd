@@ -1,16 +1,16 @@
 Utility
 =======
 
-`libesphttpd/httpd.h`
+`cwhttpd/httpd.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_route_404
-.. doxygenfunction:: ehttpd_redirect
-.. doxygenfunction:: ehttpd_url_decode
-.. doxygenfunction:: ehttpd_find_param
-.. doxygenfunction:: ehttpd_get_mimetype
-.. doxygenfunction:: ehttpd_sprintf
-.. doxygenfunction:: ehttpd_snprintf
-.. doxygenfunction:: ehttpd_vsnprintf
+.. doxygenfunction:: cwhttpd_route_404
+.. doxygenfunction:: cwhttpd_redirect
+.. doxygenfunction:: cwhttpd_url_decode
+.. doxygenfunction:: cwhttpd_find_param
+.. doxygenfunction:: cwhttpd_get_mimetype
+.. doxygenfunction:: cwhttpd_sprintf
+.. doxygenfunction:: cwhttpd_snprintf
+.. doxygenfunction:: cwhttpd_vsnprintf

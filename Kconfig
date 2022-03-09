@@ -1,45 +1,45 @@
 #ESP-IDF Kconfig configuration file.
-menu "libesphttpd"
+menu "Clockwise HTTPd"
 
 choice
 	prompt "Log level"
-	default EHTTPD_LOG_LEVEL_WARNING
+	default CWHTTPD_LOG_LEVEL_WARNING
 
-config EHTTPD_LOG_LEVEL_NONE
+config CWHTTPD_LOG_LEVEL_NONE
 	bool "None"
 
-config EHTTPD_LOG_LEVEL_ERROR
+config CWHTTPD_LOG_LEVEL_ERROR
 	bool "Error"
 
-config EHTTPD_LOG_LEVEL_WARNING
+config CWHTTPD_LOG_LEVEL_WARNING
 	bool "Warning"
 
-config EHTTPD_LOG_LEVEL_INFO
+config CWHTTPD_LOG_LEVEL_INFO
 	bool "Info"
 
-config EHTTPD_LOG_LEVEL_DEBUG
+config CWHTTPD_LOG_LEVEL_DEBUG
 	bool "Debug"
 
-config EHTTPD_LOG_LEVEL_VERBOSE
+config CWHTTPD_LOG_LEVEL_VERBOSE
 	bool "Verbose"
 
 endchoice # "Log level"
 
-config EHTTPD_LISTENER_STACK_SIZE
+config CWHTTPD_LISTENER_STACK_SIZE
 	int "Listener task stack size"
 	range 0 65535
 	default 2048
 	help
 		Stack size reserved for the listener task.
 
-config EHTTPD_LISTENER_PRIORITY
+config CWHTTPD_LISTENER_PRIORITY
 	int "Listener task priority"
 	range 1 31
 	default 1
 	help
 		Set the listener task priority.
 
-config EHTTPD_LISTENER_AFFINITY
+config CWHTTPD_LISTENER_AFFINITY
 	int "Listener task processor affinity"
 	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
 	range -1 1
@@ -48,28 +48,28 @@ config EHTTPD_LISTENER_AFFINITY
 		For the listener task, select -1 to disable task pinning,
 		0 for PRO_CPU, and 1 for APP_CPU.
 
-config EHTTPD_LISTENER_BACKLOG
+config CWHTTPD_LISTENER_BACKLOG
 	int "Listener backlog"
 	range 1 64
 	default 2
 	help
 		How many connections that can be waiting in the listen queue.
 
-config EHTTPD_WORKER_STACK_SIZE
+config CWHTTPD_WORKER_STACK_SIZE
 	int "Worker task stack size"
 	range 0 65535
 	default 4096
 	help
 		Stack size reserved for worker tasks. This includes route handlers.
 
-config EHTTPD_WORKER_PRIORITY
+config CWHTTPD_WORKER_PRIORITY
 	int "Worker task priority"
 	range 1 31
 	default 1
 	help
 		Set the worker task priority.
 
-config EHTTPD_WORKER_AFFINITY
+config CWHTTPD_WORKER_AFFINITY
 	int "Worker task processor affinity"
 	depends on IDF_TARGET_ESP32 || IDF_TARGET_ESP32S3
 	range -1 1
@@ -78,44 +78,44 @@ config EHTTPD_WORKER_AFFINITY
 		For the worker task, select -1 to disable task pinning,
 		0 for PRO_CPU, and 1 for APP_CPU.
 
-config EHTTPD_WORKER_COUNT
+config CWHTTPD_WORKER_COUNT
 	int "Number of worker tasks"
 	range 1 64
 	default 2
 	help
 		Set the number of worker tasks to run.
 
-config EHTTPD_MAX_REQUEST_SIZE
+config CWHTTPD_MAX_REQUEST_SIZE
 	int "Max length of request headers"
 	default 1024
 	help
 	    This is statically allocated per connection.
 
-config EHTTPD_DEFAULT_CLOSE
+config CWHTTPD_DEFAULT_CLOSE
 	bool "Default to closing connections"
 	default n
 
-config EHTTPD_ENABLE_CORS
+config CWHTTPD_ENABLE_CORS
 	bool "Enable CORS support"
 	default n
 
-if EHTTPD_ENABLE_CORS
+if CWHTTPD_ENABLE_CORS
 
-config EHTTPD_CORS_ORIGIN
+config CWHTTPD_CORS_ORIGIN
 	string "CORS origin"
 	default "*"
 	help
 		CORS allowed origin.
 
-config EHTTPD_CORS_METHODS
+config CWHTTPD_CORS_METHODS
 	string "CORS methods"
 	default "GET,PUT,POST,DELETE,OPTIONS"
 	help
 		CORS allowed HTTP methods.
 
-endif # EHTTPD_ENABLE_CORS
+endif # CWHTTPD_ENABLE_CORS
 
-config EHTTPD_TCP_NODELAY
+config CWHTTPD_TCP_NODELAY
 	bool "Set TCP_NODELAY"
 	default n
 	help
@@ -123,18 +123,18 @@ config EHTTPD_TCP_NODELAY
 		frames (It will disable Nagle's TCP Algorithm).  It can speed-up
 		transfers for small files.
 
-config EHTTPD_MBEDTLS
+config CWHTTPD_MBEDTLS
 	bool "Enable MBedTLS"
 	default n
 	help
 		Enabling this allows HTTP instances to be configured for serving
 		TLS connections.
 
-config EHTTPD_FW_OTA_FACTORY
+config CWHTTPD_FW_OTA_FACTORY
 	bool "Allow OTA of factory partition"
 	default n
 	help
-		Allows ehttpd_route_fw_upload() in route_flash.c to write to the
+		Allows cwhttpd_route_fw_upload() in route_flash.c to write to the
 		factory partition.  It it not recommended for production use.
 
 endmenu

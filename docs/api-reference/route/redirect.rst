@@ -1,10 +1,10 @@
 Redirect
 ========
 
-`libesphttpd/route.h`
+`cwhttpd/route.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_route_redirect
-.. doxygenfunction:: ehttpd_route_redirect_hostname
+.. doxygenfunction:: cwhttpd_route_redirect
+.. doxygenfunction:: cwhttpd_route_redirect_hostname

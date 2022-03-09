@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "log.h"
-#include "libesphttpd/httpd.h"
-#include "libesphttpd/port.h"
+#include "cwhttpd/httpd.h"
+#include "cwhttpd/port.h"
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -18,12 +18,12 @@
 #include <unistd.h>
 
 
-void ehttpd_delay_ms(uint32_t ms)
+void cwhttpd_delay_ms(uint32_t ms)
 {
     usleep(ms * 1000);
 }
 
-long long ehttpd_log_timestamp(void)
+long long cwhttpd_log_timestamp(void)
 {
     struct timeval te;
     gettimeofday(&te, NULL);
@@ -31,13 +31,13 @@ long long ehttpd_log_timestamp(void)
     return ms;
 }
 
-struct ehttpd_mutex_t {
+struct cwhttpd_mutex_t {
     pthread_mutex_t handle;
 };
 
-ehttpd_mutex_t *ehttpd_mutex_create(bool recursive)
+cwhttpd_mutex_t *cwhttpd_mutex_create(bool recursive)
 {
-    ehttpd_mutex_t *mutex = (ehttpd_mutex_t *) malloc(sizeof(ehttpd_mutex_t));
+    cwhttpd_mutex_t *mutex = (cwhttpd_mutex_t *) malloc(sizeof(cwhttpd_mutex_t));
     if (mutex == NULL) {
         LOGE(__func__, "malloc failed");
         return NULL;
@@ -53,23 +53,23 @@ ehttpd_mutex_t *ehttpd_mutex_create(bool recursive)
     return mutex;
 }
 
-void ehttpd_mutex_lock(ehttpd_mutex_t *mutex)
+void cwhttpd_mutex_lock(cwhttpd_mutex_t *mutex)
 {
     pthread_mutex_lock(&mutex->handle);
 }
 
-void ehttpd_mutex_unlock(ehttpd_mutex_t *mutex)
+void cwhttpd_mutex_unlock(cwhttpd_mutex_t *mutex)
 {
     pthread_mutex_unlock(&mutex->handle);
 }
 
-void ehttpd_mutex_delete(ehttpd_mutex_t *mutex)
+void cwhttpd_mutex_delete(cwhttpd_mutex_t *mutex)
 {
     pthread_mutex_destroy(&mutex->handle);
     free(mutex);
 }
 
-ehttpd_semaphore_t *ehttpd_semaphore_create(uint32_t max, uint32_t initial)
+cwhttpd_semaphore_t *cwhttpd_semaphore_create(uint32_t max, uint32_t initial)
 {
     sem_t *semaphore = malloc(sizeof(sem_t));
     if (semaphore == NULL) {
@@ -81,10 +81,10 @@ ehttpd_semaphore_t *ehttpd_semaphore_create(uint32_t max, uint32_t initial)
         return NULL;
     }
 
-    return (ehttpd_semaphore_t *) semaphore;
+    return (cwhttpd_semaphore_t *) semaphore;
 }
 
-bool ehttpd_semaphore_take(ehttpd_semaphore_t *semaphore, uint32_t timeout_ms)
+bool cwhttpd_semaphore_take(cwhttpd_semaphore_t *semaphore, uint32_t timeout_ms)
 {
     if (timeout_ms == 0) {
         return sem_trywait((sem_t *) semaphore) == 0;
@@ -103,7 +103,7 @@ bool ehttpd_semaphore_take(ehttpd_semaphore_t *semaphore, uint32_t timeout_ms)
     }
 }
 
-bool ehttpd_semaphore_give(ehttpd_semaphore_t *semaphore)
+bool cwhttpd_semaphore_give(cwhttpd_semaphore_t *semaphore)
 {
     int num;
     sem_getvalue((sem_t *) semaphore, &num);
@@ -113,20 +113,20 @@ bool ehttpd_semaphore_give(ehttpd_semaphore_t *semaphore)
     return sem_post((sem_t *) semaphore) == 0;
 }
 
-void ehttpd_semaphore_delete(ehttpd_semaphore_t *semaphore)
+void cwhttpd_semaphore_delete(cwhttpd_semaphore_t *semaphore)
 {
     sem_destroy((sem_t *) semaphore);
 }
 
-struct ehttpd_thread_t {
+struct cwhttpd_thread_t {
     pthread_t pthread;
-    ehttpd_thread_func_t fn;
+    cwhttpd_thread_func_t fn;
     void *arg;
 };
 
 static void *thread_handler(void *arg)
 {
-    ehttpd_thread_t *thread = (ehttpd_thread_t *) arg;
+    cwhttpd_thread_t *thread = (cwhttpd_thread_t *) arg;
 
     sigset_t set;
     sigemptyset(&set);
@@ -137,10 +137,10 @@ static void *thread_handler(void *arg)
     return NULL;
 }
 
-ehttpd_thread_t *ehttpd_thread_create(ehttpd_thread_func_t fn,
-        void *arg, const ehttpd_thread_attr_t *attr)
+cwhttpd_thread_t *cwhttpd_thread_create(cwhttpd_thread_func_t fn,
+        void *arg, const cwhttpd_thread_attr_t *attr)
 {
-    ehttpd_thread_t *thread = (ehttpd_thread_t *) malloc(sizeof(ehttpd_thread_t));
+    cwhttpd_thread_t *thread = (cwhttpd_thread_t *) malloc(sizeof(cwhttpd_thread_t));
     if (thread == NULL) {
         LOGE(__func__, "malloc failed");
         return NULL;
@@ -157,7 +157,7 @@ ehttpd_thread_t *ehttpd_thread_create(ehttpd_thread_func_t fn,
     return thread;
 }
 
-void ehttpd_thread_delete(ehttpd_thread_t *thread)
+void cwhttpd_thread_delete(cwhttpd_thread_t *thread)
 {
     if (pthread_self() == thread->pthread) {
         sigset_t set;
@@ -175,7 +175,7 @@ void ehttpd_thread_delete(ehttpd_thread_t *thread)
     }
 }
 
-struct ehttpd_timer_t {
+struct cwhttpd_timer_t {
     timer_t handle;
     struct itimerspec ts;
     void (*cb)(void *arg);
@@ -184,15 +184,15 @@ struct ehttpd_timer_t {
 
 static void timer_handler(union sigval val)
 {
-    struct ehttpd_timer_t *timer = (struct ehttpd_timer_t *) val.sival_ptr;
+    struct cwhttpd_timer_t *timer = (struct cwhttpd_timer_t *) val.sival_ptr;
     timer->cb(timer->arg);
 }
 
-ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
-        ehttpd_timer_handler_t cb, void *arg)
+cwhttpd_timer_t *cwhttpd_timer_create(int ms, bool autoreload,
+        cwhttpd_timer_handler_t cb, void *arg)
 {
-    struct ehttpd_timer_t *timer =
-            (struct ehttpd_timer_t *) calloc(1, sizeof(struct ehttpd_timer_t));
+    struct cwhttpd_timer_t *timer =
+            (struct cwhttpd_timer_t *) calloc(1, sizeof(struct cwhttpd_timer_t));
     if (timer == NULL) {
         LOGE(__func__, "calloc failed");
         return NULL;
@@ -221,14 +221,14 @@ ehttpd_timer_t *ehttpd_timer_create(int ms, bool autoreload,
     return timer;
 }
 
-void ehttpd_timer_start(ehttpd_timer_t *timer)
+void cwhttpd_timer_start(cwhttpd_timer_t *timer)
 {
     if (timer_settime(timer->handle, 0, &timer->ts, NULL) < 0) {
         LOGE(__func__, "timer_settime failed");
     }
 }
 
-void ehttpd_timer_stop(ehttpd_timer_t *timer)
+void cwhttpd_timer_stop(cwhttpd_timer_t *timer)
 {
     struct itimerspec ts = {};
     if (timer_settime(timer->handle, 0, &ts, NULL) < 0) {
@@ -236,7 +236,7 @@ void ehttpd_timer_stop(ehttpd_timer_t *timer)
     }
 }
 
-void ehttpd_timer_delete(ehttpd_timer_t *timer)
+void cwhttpd_timer_delete(cwhttpd_timer_t *timer)
 {
     timer_delete(timer->handle);
     free(timer);

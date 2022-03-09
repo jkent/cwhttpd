@@ -1,17 +1,17 @@
 Semaphore
 =========
 
-`libesphttpd/port.h`
+`cwhttpd/port.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_semaphore_create
-.. doxygenfunction:: ehttpd_semaphore_take
-.. doxygenfunction:: ehttpd_semaphore_give
-.. doxygenfunction:: ehttpd_semaphore_delete
+.. doxygenfunction:: cwhttpd_semaphore_create
+.. doxygenfunction:: cwhttpd_semaphore_take
+.. doxygenfunction:: cwhttpd_semaphore_give
+.. doxygenfunction:: cwhttpd_semaphore_delete
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_semaphore_t
+.. doxygentypedef:: cwhttpd_semaphore_t

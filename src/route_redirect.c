@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "log.h"
-#include "libesphttpd/route.h"
-#include "libesphttpd/httpd.h"
+#include "cwhttpd/route.h"
+#include "cwhttpd/httpd.h"
 
 #if defined(ESP_PLATFORM)
 # include <esp_netif.h>
@@ -16,26 +16,26 @@
 #include <string.h>
 
 
-ehttpd_status_t ehttpd_route_redirect(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_redirect(cwhttpd_conn_t *conn)
 {
-    ehttpd_redirect(conn, (char *) conn->route->argv[0]);
-    return EHTTPD_STATUS_DONE;
+    cwhttpd_redirect(conn, (char *) conn->route->argv[0]);
+    return CWHTTPD_STATUS_DONE;
 }
 
-ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_redirect_hostname(cwhttpd_conn_t *conn)
 {
     const char *new_hostname = (char *) conn->route->argv[0];
     char *buf;
 
     if (conn->request.hostname == NULL) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
     /* Test hostname, pass on if it is the same... Not ignoring the case
      * because looks are everything!
      */
     if (strcmp(conn->request.hostname, new_hostname) == 0) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
 #if 0
@@ -50,13 +50,13 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
 
     uint32_t netmask = ap_info.netmask.addr;
     if ((remote & netmask) != (ap_info.ip.addr & netmask)) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 #endif
 #endif
 
     const char *uri_fmt;
-    if (ehttpd_plat_is_ssl(conn)) {
+    if (cwhttpd_plat_is_ssl(conn)) {
         uri_fmt = "https://%s";
     } else {
         uri_fmt = "http://%s";
@@ -67,12 +67,12 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn)
     buf = malloc(strlen(new_hostname) + strlen(uri_fmt) - 1);
     if (buf == NULL) {
         LOGE(__func__, "malloc failed");
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     sprintf(buf, uri_fmt, new_hostname);
     LOGD(__func__, "redirecting to %s", buf);
-    ehttpd_redirect(conn, buf);
+    cwhttpd_redirect(conn, buf);
     free(buf);
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }

@@ -1,9 +1,9 @@
 Delay
 =====
 
-`libesphttpd/port.h`
+`cwhttpd/port.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_delay_ms
+.. doxygenfunction:: cwhttpd_delay_ms

@@ -1,15 +1,15 @@
 Captive DNS Server
 ==================
 
-`libesphttpd/captdns.h`
+`cwhttpd/captdns.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_captdns_start
-.. doxygenfunction:: ehttpd_captdns_shutdown
+.. doxygenfunction:: cwhttpd_captdns_start
+.. doxygenfunction:: cwhttpd_captdns_shutdown
 
 Type Definitions
 ^^^^^^^^^^^^^^^^
 
-.. doxygentypedef:: ehttpd_captdns_t
+.. doxygentypedef:: cwhttpd_captdns_t

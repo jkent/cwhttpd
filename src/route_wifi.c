@@ -8,7 +8,7 @@ ESP32 route handler/template routines for the /wifi url.
 
 #include "log.h"
 #include "kref.h"
-#include "libesphttpd/route.h"
+#include "cwhttpd/route.h"
 
 #include <stdatomic.h>
 #include <stdint.h>
@@ -129,7 +129,7 @@ static void handle_config_timer(TimerHandle_t timer);
 
 /* Initialise data structures. Needs to be called before any other function, *\
 \* including the system event handler.                                       */
-esp_err_t ehttpd_wifi_init(void)
+esp_err_t cwhttpd_wifi_init(void)
 {
     esp_err_t result;
 
@@ -442,17 +442,17 @@ static esp_err_t wifi_start_scan(void)
  * initiate a scan for access points and if available will return the      *
  * result of an earlier scan. The result is embedded in a bit of JSON      *
 \* parsed by the javascript in wifi.tpl.                                   */
-ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_wifi_scan(cwhttpd_conn_t *conn)
 {
     struct ap_data_iter *iter;
     struct scan_data *data;
     wifi_ap_record_t *record;
     wifi_mode_t mode;
-    ehttpd_status_t result;
+    cwhttpd_status_t result;
     int len;
     char buf[1024];
 
-    result = EHTTPD_STATUS_DONE;
+    result = CWHTTPD_STATUS_DONE;
     iter = (struct ap_data_iter *) conn->user;
 
     if (conn->closed) {
@@ -466,9 +466,9 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
 
     /* First call. Send header, fetch scan data and set up iterator. */
     if (iter == NULL) {
-        ehttpd_response(conn, 200);
-        ehttpd_send_header(conn, "Content-Type", "text/json");
-        ehttpd_end_headers(conn);
+        cwhttpd_response(conn, 200);
+        cwhttpd_send_header(conn, "Content-Type", "text/json");
+        cwhttpd_end_headers(conn);
 
         data = get_scan_data();
         if (data != NULL) {
@@ -485,7 +485,7 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
             if (wifi_start_scan() != ESP_OK) {
                 /* Start_scan failed. Tell the user there is an error and don't just keep trying.  */
                 len=sprintf(buf, "{\n \"result\": { \n\"inProgress\": \"ERROR\"\n }\n}\n");
-                ehttpd_send(conn, (uint8_t *) buf, len);
+                cwhttpd_send(conn, (uint8_t *) buf, len);
                 goto err_out;
             }
         }
@@ -495,7 +495,7 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
         /* There is either no scan data available or iterator allocation    *\
         \* failed. Tell the user we are still trying...                     */
         len=sprintf(buf, "{\n \"result\": { \n\"inProgress\": \"1\"\n }\n}\n");
-        ehttpd_send(conn, (uint8_t *) buf, len);
+        cwhttpd_send(conn, (uint8_t *) buf, len);
     } else {
         /* We have data to send. Send JSON opening before sending first AP  *\
         \* data from the list.                                              */
@@ -503,7 +503,7 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
             len = sprintf(buf, "{\n \"result\": { \n"
                     "\"inProgress\": \"0\", \n"
                     "\"APs\": [\n");
-            ehttpd_send(conn, (uint8_t *) buf, len);
+            cwhttpd_send(conn, (uint8_t *) buf, len);
         }
 
         /* Skip sending stale AP data if we are in AP mode. */
@@ -529,24 +529,24 @@ ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn)
                             record->authmode == WIFI_AUTH_WEP  ? 1 : 2,
                                     record->primary,
                                     iter->idx < iter->data->num_records ? "," : "");
-            ehttpd_send(conn, (uint8_t *) buf, len);
+            cwhttpd_send(conn, (uint8_t *) buf, len);
         }
 
         /* Close JSON statement when all elements have been sent. */
         if (iter->idx >= iter->data->num_records) {
             len = sprintf(buf, "]\n}\n}\n");
-            ehttpd_send(conn, (uint8_t *) buf, len);
+            cwhttpd_send(conn, (uint8_t *) buf, len);
 
             /* Also start a new scan. */
             wifi_start_scan();
         } else {
             /* Still more data to send... */
-            result = EHTTPD_STATUS_MORE;
+            result = CWHTTPD_STATUS_MORE;
         }
     }
 
     err_out:
-    if (result == EHTTPD_STATUS_DONE && iter != NULL) {
+    if (result == CWHTTPD_STATUS_DONE && iter != NULL) {
         put_scan_data(iter->data);
         free(iter);
         conn->user = NULL;
@@ -888,7 +888,7 @@ static const char *event_names[] = {
 /* Update state information from system events. This function must be   *\
  * called from the main event handler to keep this module updated about *
 \* the current system state.                                            */
-void ehttpd_wifi_event_cb(system_event_t *event)
+void cwhttpd_wifi_event_cb(system_event_t *event)
 {
     LOGD(TAG, "[%s] Received %s.",
             __FUNCTION__, event_names[event->event_id]);
@@ -996,7 +996,7 @@ static esp_err_t update_wifi(struct wifi_cfg_state *cfg, struct wifi_cfg *new_cf
 
 
 /* Trigger a connection attempt to the AP with the given SSID and password. */
-ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_wifi_connect(cwhttpd_conn_t *conn)
 {
     size_t len;
     const char *redirect;
@@ -1006,7 +1006,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
 
     if (conn->closed) {
         /* Connection aborted. Clean up. */
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     redirect = "wifi.tpl";
@@ -1028,7 +1028,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
 
     sta = &(cfg.sta.sta);
     len = sizeof(sta->ssid);
-    len = ehttpd_find_param("essid", conn->post->buf, (char *) sta->ssid,
+    len = cwhttpd_find_param("essid", conn->post->buf, (char *) sta->ssid,
             &len);
     if (len <= 1) {
         LOGE(TAG, "[%s] essid invalid or missing.", __FUNCTION__);
@@ -1036,7 +1036,7 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
     }
 
     len = sizeof(sta->password);
-    len = ehttpd_find_param("passwd", conn->post->buf, (char *) sta->password,
+    len = cwhttpd_find_param("passwd", conn->post->buf, (char *) sta->password,
             &len);
     if (len <= 1) {
         /* FIXME: What about unsecured APs? */
@@ -1061,13 +1061,13 @@ ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn)
 #endif
 
     err_out:
-    ehttpd_redirect(conn, redirect);
-    return EHTTPD_STATUS_DONE;
+    cwhttpd_redirect(conn, redirect);
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 /* route handler used to set the WiFi mode. */
-ehttpd_status_t ehttpd_route_wifi_set_mode(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_wifi_set_mode(cwhttpd_conn_t *conn)
 {
     size_t len;
     wifi_mode_t mode;
@@ -1077,11 +1077,11 @@ ehttpd_status_t ehttpd_route_wifi_set_mode(ehttpd_conn_t *conn)
 
     if (conn->closed) {
         /* Connection aborted. Clean up. */
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     len = sizeof(buf);
-    len = ehttpd_find_param("mode", conn->args, buf, &len);
+    len = cwhttpd_find_param("mode", conn->args, buf, &len);
     if (len!=0) {
         errno = 0;
         mode = strtoul(buf, NULL, 10);
@@ -1128,13 +1128,13 @@ ehttpd_status_t ehttpd_route_wifi_set_mode(ehttpd_conn_t *conn)
     }
 
     err_out:
-    ehttpd_redirect(conn, "working.html"); // changing mode takes some time, so redirect user to wait
-    return EHTTPD_STATUS_DONE;
+    cwhttpd_redirect(conn, "working.html"); // changing mode takes some time, so redirect user to wait
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 /* route handler for triggering a WPS push button connection attempt. */
-ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_wifi_start_wps(cwhttpd_conn_t *conn)
 {
     struct wifi_cfg cfg;
     esp_err_t result;
@@ -1143,14 +1143,14 @@ ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn)
 
     if (conn->closed) {
         /* Connection aborted. Clean up. */
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     /* Make sure we are not in the middle of setting a new WiFi config. */
     if (xSemaphoreTake(cfg_state.lock, CFG_DELAY) != pdTRUE) {
         LOGE(TAG, "[%s] Error taking mutex.", __FUNCTION__);
-        ehttpd_redirect(conn, "wifi.tpl");
-        return EHTTPD_STATUS_DONE;
+        cwhttpd_redirect(conn, "wifi.tpl");
+        return CWHTTPD_STATUS_DONE;
     }
 
     if (cfg_state.state > cfg_state_idle) {
@@ -1180,14 +1180,14 @@ ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn)
 
     err_out:
     xSemaphoreGive(cfg_state.lock);
-    ehttpd_redirect(conn, "connecting.html");
+    cwhttpd_redirect(conn, "connecting.html");
 
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 /* route handler for settings in AP mode. */
-ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_wifi_ap_settings(cwhttpd_conn_t *conn)
 {
     size_t len;
     char buf[64];
@@ -1195,7 +1195,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
     esp_err_t result;
 
     if (conn->closed) {
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     if (conn->post == NULL) {
@@ -1206,7 +1206,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
     bool has_arg_chan = false;
     unsigned int chan;
     len = sizeof(buf);
-    len = ehttpd_find_param("chan", conn->post->buf, buf, &len);
+    len = cwhttpd_find_param("chan", conn->post->buf, buf, &len);
     if (len > 0) {
         errno = 0;
         chan = strtoul(buf, NULL, 10);
@@ -1221,7 +1221,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
     bool has_arg_ssid = false;
     char ssid[32];           /** SSID of ESP32 soft-AP */
     len = sizeof(buf);
-    len = ehttpd_find_param("ssid", conn->post->buf, buf, &len);
+    len = cwhttpd_find_param("ssid", conn->post->buf, buf, &len);
     if (len > 0) {
         int n;
         n = sscanf(buf, "%s", (char *) &ssid); // find a string without spaces
@@ -1236,7 +1236,7 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
     bool has_arg_pass = false;
     char pass[64];       /** Password of ESP32 soft-AP */
     len = sizeof(buf);
-    len = ehttpd_find_param("pass", conn->post->buf, buf, &len);
+    len = cwhttpd_find_param("pass", conn->post->buf, buf, &len);
     if (len > 0) {
         int n;
         n = sscanf(buf, "%s", (char *) &pass); // find a string without spaces
@@ -1284,20 +1284,20 @@ ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn)
     }
 
     err_out:
-    ehttpd_redirect(conn, "working.html");
-    return EHTTPD_STATUS_DONE;
+    cwhttpd_redirect(conn, "working.html");
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 /* route handler returning the current state of the WiFi connection. */
-ehttpd_status_t ehttpd_route_wifi_status(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_wifi_status(cwhttpd_conn_t *conn)
 {
     char buf[128];
     tcpip_adapter_ip_info_t info;
     esp_err_t result;
 
     if (conn->closed) {
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     snprintf(buf, sizeof(buf) - 1, "{\n \"status\": \"fail\"\n }\n");
@@ -1327,23 +1327,23 @@ ehttpd_status_t ehttpd_route_wifi_status(ehttpd_conn_t *conn)
         break;
     }
 
-    ehttpd_response(conn, 200);
-    ehttpd_send_header(conn, "Content-Type", "text/json");
-    ehttpd_end_headers(conn);
-    ehttpd_send(conn, (uint8_t *) buf, -1);
-    return EHTTPD_STATUS_DONE;
+    cwhttpd_response(conn, 200);
+    cwhttpd_send_header(conn, "Content-Type", "text/json");
+    cwhttpd_end_headers(conn);
+    cwhttpd_send(conn, (uint8_t *) buf, -1);
+    return CWHTTPD_STATUS_DONE;
 
     err_out:
     LOGE(TAG, "[%s] Failed.", __FUNCTION__);
-    ehttpd_response(conn, 500);
-    ehttpd_end_headers(conn);
+    cwhttpd_response(conn, 500);
+    cwhttpd_end_headers(conn);
 
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 
 
 /* Template code for the WiFi page. */
-ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
+cwhttpd_status_t cwhttpd_tpl_wlan(cwhttpd_conn_t *conn, char *token, void **arg)
 {
     char buf[600];
     wifi_ap_record_t stcfg;
@@ -1519,8 +1519,8 @@ ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg)
         }
     }
 
-    ehttpd_send(conn, (uint8_t *) buf, -1);
+    cwhttpd_send(conn, (uint8_t *) buf, -1);
 
     err_out:
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }

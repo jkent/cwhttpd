@@ -10,9 +10,9 @@
  */
 
 #include "log.h"
-#include "libesphttpd/captdns.h"
-#include "libesphttpd/httpd.h"
-#include "libesphttpd/port.h"
+#include "cwhttpd/captdns.h"
+#include "cwhttpd/httpd.h"
+#include "cwhttpd/port.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -33,10 +33,10 @@
 
 #define DNS_LEN 512
 
-struct ehttpd_captdns_t {
-    ehttpd_thread_t *thread;
-    ehttpd_semaphore_t *shutdown;
-    ehttpd_inst_t* inst;
+struct cwhttpd_captdns_t {
+    cwhttpd_thread_t *thread;
+    cwhttpd_semaphore_t *shutdown;
+    cwhttpd_inst_t* inst;
     struct sockaddr_in addr;
     int fd;
     uint8_t buf[DNS_LEN];
@@ -105,7 +105,7 @@ struct dns_uri_header_t {
 #define QCLASS_URI 256
 
 
-void ehttpd_captdns_hook(ehttpd_inst_t *inst, ehttpd_captdns_t *captdns,
+void cwhttpd_captdns_hook(cwhttpd_inst_t *inst, cwhttpd_captdns_t *captdns,
         int fd);
 
 /** This function writes a 16-bit value to an unaligned pointer *p in network
@@ -202,9 +202,9 @@ static void write_name(uint8_t **p, char *s, size_t *len)
     *len = (void *) *p - start;
 }
 
-void ehttpd_captdns_thread(void *arg)
+void cwhttpd_captdns_thread(void *arg)
 {
-    ehttpd_captdns_t *captdns = arg;
+    cwhttpd_captdns_t *captdns = arg;
 
     while (!captdns->shutdown) {
         fd_set read_set;
@@ -325,13 +325,13 @@ void ehttpd_captdns_thread(void *arg)
                 (struct sockaddr *) &from, sizeof(struct sockaddr_in));
     }
 
-    ehttpd_semaphore_give(captdns->shutdown);
-    ehttpd_thread_delete(captdns->thread);
+    cwhttpd_semaphore_give(captdns->shutdown);
+    cwhttpd_thread_delete(captdns->thread);
 }
 
-ehttpd_captdns_t *ehttpd_captdns_start(const char *addr)
+cwhttpd_captdns_t *cwhttpd_captdns_start(const char *addr)
 {
-    ehttpd_captdns_t *captdns = calloc(1, sizeof(ehttpd_captdns_t));
+    cwhttpd_captdns_t *captdns = calloc(1, sizeof(cwhttpd_captdns_t));
     if (captdns == NULL) {
         LOGE(__func__, "calloc");
         return NULL;
@@ -365,7 +365,7 @@ ehttpd_captdns_t *ehttpd_captdns_start(const char *addr)
     }
     LOGI(__func__, "bound to UDP %s", addr);
 
-    captdns->thread = ehttpd_thread_create(ehttpd_captdns_thread, captdns,
+    captdns->thread = cwhttpd_thread_create(cwhttpd_captdns_thread, captdns,
             NULL);
     if (captdns->thread == NULL) {
         LOGE(__func__, "thread");
@@ -382,10 +382,10 @@ err:
     return NULL;
 }
 
-void ehttpd_captdns_shutdown(ehttpd_captdns_t *captdns)
+void cwhttpd_captdns_shutdown(cwhttpd_captdns_t *captdns)
 {
-    captdns->shutdown = ehttpd_semaphore_create(1, 0);
-    ehttpd_semaphore_take(captdns->shutdown, UINT32_MAX);
-    ehttpd_semaphore_delete(captdns->shutdown);
+    captdns->shutdown = cwhttpd_semaphore_create(1, 0);
+    cwhttpd_semaphore_take(captdns->shutdown, UINT32_MAX);
+    cwhttpd_semaphore_delete(captdns->shutdown);
     free(captdns);
 }

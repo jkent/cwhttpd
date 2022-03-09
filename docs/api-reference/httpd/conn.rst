@@ -1,40 +1,40 @@
 Connection
 ==========
 
-`libesphttpd/httpd.h`
+`cwhttpd/httpd.h`
 
 Functions
 ^^^^^^^^^
 
-.. doxygenfunction:: ehttpd_plat_is_ssl
-.. doxygenfunction:: ehttpd_plat_recv
-.. doxygenfunction:: ehttpd_plat_send
-.. doxygenfunction:: ehttpd_recv
-.. doxygenfunction:: ehttpd_send
-.. doxygenfunction:: ehttpd_sendf
-.. doxygenfunction:: ehttpd_get_header
-.. doxygenfunction:: ehttpd_set_chunked
-.. doxygenfunction:: ehttpd_set_close
-.. doxygenfunction:: ehttpd_response
-.. doxygenfunction:: ehttpd_send_header
-.. doxygenfunction:: ehttpd_send_cache_header
-.. doxygenfunction:: ehttpd_chunk_start
-.. doxygenfunction:: ehttpd_chunk_end
+.. doxygenfunction:: cwhttpd_plat_is_ssl
+.. doxygenfunction:: cwhttpd_plat_recv
+.. doxygenfunction:: cwhttpd_plat_send
+.. doxygenfunction:: cwhttpd_recv
+.. doxygenfunction:: cwhttpd_send
+.. doxygenfunction:: cwhttpd_sendf
+.. doxygenfunction:: cwhttpd_get_header
+.. doxygenfunction:: cwhttpd_set_chunked
+.. doxygenfunction:: cwhttpd_set_close
+.. doxygenfunction:: cwhttpd_response
+.. doxygenfunction:: cwhttpd_send_header
+.. doxygenfunction:: cwhttpd_send_cache_header
+.. doxygenfunction:: cwhttpd_chunk_start
+.. doxygenfunction:: cwhttpd_chunk_end
 
 Structures
 ^^^^^^^^^^
 
-.. doxygenstruct:: ehttpd_request_t
+.. doxygenstruct:: cwhttpd_request_t
     :members:
 
-.. doxygenstruct:: ehttpd_conn_t
+.. doxygenstruct:: cwhttpd_conn_t
     :members:
 
-.. doxygenstruct:: ehttpd_post_t
+.. doxygenstruct:: cwhttpd_post_t
     :members:
 
 Enumerations
 ^^^^^^^^^^^^
 
-.. doxygenenum:: ehttpd_status_t
-.. doxygenenum:: ehttpd_method_t
+.. doxygenenum:: cwhttpd_status_t
+.. doxygenenum:: cwhttpd_method_t

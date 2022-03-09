@@ -12,7 +12,7 @@ function(target_add_resource target path)
 
     add_custom_command(OUTPUT ${output}.c
         COMMAND ${CMAKE_COMMAND} -E make_directory ${dir}
-        COMMAND ${python} ${ehttpd_DIR}/tools/bin2c.py ${input} ${output}.c
+        COMMAND ${python} ${cwhttpd_DIR}/tools/bin2c.py ${input} ${output}.c
         DEPENDS ${resource}
         COMMENT "Building source file for ${rel_input}"
         VERBATIM

@@ -7,8 +7,8 @@ Route handlers to let httpd use the filesystem to serve the files in it.
 */
 
 #include "log.h"
-#include "libesphttpd/route.h"
-#include "libesphttpd/httpd.h"
+#include "cwhttpd/route.h"
+#include "cwhttpd/httpd.h"
 
 #include <assert.h>
 #include <frozen.h>
@@ -26,7 +26,7 @@ Route handlers to let httpd use the filesystem to serve the files in it.
 #define TRY(X) ({ \
     ssize_t n = X; \
     if (n < 0) { \
-        r = EHTTPD_STATUS_FAIL; \
+        r = CWHTTPD_STATUS_FAIL; \
         goto cleanup; \
     } \
     n; \
@@ -38,12 +38,12 @@ Route handlers to let httpd use the filesystem to serve the files in it.
 #define ESPFS_FLAG_GZIP (1 << 1)
 
 
-static bool get_filepath(ehttpd_conn_t *conn, char *path, size_t len,
+static bool get_filepath(cwhttpd_conn_t *conn, char *path, size_t len,
         struct stat *st, const char *index)
 {
     size_t out_len = 0;
     const char *url = conn->request.url;
-    const ehttpd_route_t *route = conn->route;
+    const cwhttpd_route_t *route = conn->route;
     const char *rpath = route->path;
 
     while (*rpath == *url) {
@@ -85,13 +85,13 @@ static bool get_filepath(ehttpd_conn_t *conn, char *path, size_t len,
     return false;
 }
 
-ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fs_get(cwhttpd_conn_t *conn)
 {
-    ehttpd_status_t r = EHTTPD_STATUS_DONE;
+    cwhttpd_status_t r = CWHTTPD_STATUS_DONE;
 
     /* Only process GET requests, otherwise fallthrough */
-    if (conn->request.method != EHTTPD_METHOD_GET) {
-        return EHTTPD_STATUS_NOTFOUND;
+    if (conn->request.method != CWHTTPD_METHOD_GET) {
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
     /* We can use buf here because its not needed until reading data */
@@ -99,7 +99,7 @@ ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
     struct stat st;
     if (!get_filepath(conn, buf, sizeof(buf), &st, "index.html")) {
         printf("not found\n");
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
     bool gzip_encoding = false;
@@ -119,7 +119,7 @@ ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
     }
 #endif
 
-    const char *mimetype = ehttpd_get_mimetype(buf);
+    const char *mimetype = cwhttpd_get_mimetype(buf);
 
     FILE *f = fopen(buf, "r");
     if (f == NULL) {
@@ -130,56 +130,56 @@ ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn)
     }
 
     if (f == NULL) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
     if (gzip_encoding) {
         /* Check the request Accept-Encoding header for gzip. Return a 500
          * response if not present. */
-        const char *header = ehttpd_get_header(conn, "Accept-Encoding");
+        const char *header = cwhttpd_get_header(conn, "Accept-Encoding");
         if (header && strstr(header, "gzip") == NULL) {
             LOGE(__func__, "client does not accept gzip!");
             fclose(f);
-            TRY(ehttpd_response(conn, 500));
-            return EHTTPD_STATUS_DONE;
+            TRY(cwhttpd_response(conn, 500));
+            return CWHTTPD_STATUS_DONE;
         }
     }
 
-    TRY(ehttpd_response(conn, 200));
+    TRY(cwhttpd_response(conn, 200));
     if (gzip_encoding) {
-        TRY(ehttpd_send_header(conn, "Content-Encoding", "gzip"));
+        TRY(cwhttpd_send_header(conn, "Content-Encoding", "gzip"));
     }
     if (mimetype) {
-        TRY(ehttpd_send_header(conn, "Content-Type", mimetype));
+        TRY(cwhttpd_send_header(conn, "Content-Type", mimetype));
     }
-    TRY(ehttpd_send_cache_header(conn, mimetype));
+    TRY(cwhttpd_send_cache_header(conn, mimetype));
 
     size_t len;
-    TRY(ehttpd_chunk_start(conn, st.st_size));
+    TRY(cwhttpd_chunk_start(conn, st.st_size));
     while ((len = fread(buf, 1, FILE_CHUNK_LEN, f)) > 0) {
-        TRY(ehttpd_send(conn, buf, len));
+        TRY(cwhttpd_send(conn, buf, len));
     }
-    TRY(ehttpd_chunk_end(conn));
+    TRY(cwhttpd_chunk_end(conn));
 
 cleanup:
     fclose(f);
     return r;
 }
 
-ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fs_tpl(cwhttpd_conn_t *conn)
 {
-    ehttpd_status_t r = EHTTPD_STATUS_DONE;
+    cwhttpd_status_t r = CWHTTPD_STATUS_DONE;
 
     /* Only process GET requests, otherwise fallthrough */
-    if (conn->request.method != EHTTPD_METHOD_GET) {
-        return EHTTPD_STATUS_NOTFOUND;
+    if (conn->request.method != CWHTTPD_METHOD_GET) {
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
     /* We can use buf here because its not needed until reading data */
     char buf[FILE_CHUNK_LEN];
     struct stat st;
     if (!get_filepath(conn, buf, sizeof(buf), &st, "index.tpl")) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
 #if defined(CONFIG_IDF_TARGET_ESP8266) || defined(ESP_PLATFORM)
@@ -201,21 +201,21 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
 
     if (gzip_encoding) {
         LOGE(__func__, "template has gzip encoding");
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 #endif
 
-    const char *mimetype = ehttpd_get_mimetype(buf);
+    const char *mimetype = cwhttpd_get_mimetype(buf);
 
     FILE *f = fopen(buf, "r");
     if (f == NULL) {
-        return EHTTPD_STATUS_NOTFOUND;
+        return CWHTTPD_STATUS_NOTFOUND;
     }
 
-    ehttpd_tpl_cb_t cb = conn->route->argv[1];
-    TRY(ehttpd_response(conn, 200));
+    cwhttpd_tpl_cb_t cb = conn->route->argv[1];
+    TRY(cwhttpd_response(conn, 200));
     if (mimetype) {
-        TRY(ehttpd_send_header(conn, "Content-Type", mimetype));
+        TRY(cwhttpd_send_header(conn, "Content-Type", mimetype));
     }
 
     void *user = NULL;
@@ -233,7 +233,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
                     if (buf[i] == '%') {
                         /* send collected raw data */
                         if (raw_count != 0) {
-                            TRY(ehttpd_send(conn, p, raw_count));
+                            TRY(cwhttpd_send(conn, p, raw_count));
                             raw_count = 0;
                         }
                         /* start collecting token chars */
@@ -246,7 +246,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
                     if (buf[i] == '%') {
                         if (token_pos == 0) {
                             /* this is an escape sequence */
-                            TRY(ehttpd_send(conn, "%", 1));
+                            TRY(cwhttpd_send(conn, "%", 1));
                         } else {
                             /* this is a token */
                             token[token_pos] = '\0'; /* zero terminate */
@@ -267,7 +267,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn)
 
         /* send remainder */
         if (raw_count != 0) {
-            TRY(ehttpd_send(conn, p, raw_count));
+            TRY(cwhttpd_send(conn, p, raw_count));
         }
     } while (len == FILE_CHUNK_LEN);
 
@@ -317,7 +317,7 @@ typedef struct {
     const char *errtxt;
 } upload_data_t;
 
-ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_fs_put(cwhttpd_conn_t *conn)
 {
     upload_data_t *data = (upload_data_t *) conn->user;
 
@@ -330,14 +330,14 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
             free(data);
         }
         LOGE(__func__, "Connection aborted!");
-        return EHTTPD_STATUS_DONE;
+        return CWHTTPD_STATUS_DONE;
     }
 
     if (data == NULL) {
         /* First call to this route handler */
-        if (conn->post == NULL || (conn->method != EHTTPD_METHOD_PUT &&
-                conn->method != EHTTPD_METHOD_POST)) {
-            return EHTTPD_STATUS_NOTFOUND; /* fallthrough */
+        if (conn->post == NULL || (conn->method != CWHTTPD_METHOD_PUT &&
+                conn->method != CWHTTPD_METHOD_POST)) {
+            return CWHTTPD_STATUS_NOTFOUND; /* fallthrough */
         }
         data = (upload_data_t *) malloc(sizeof(upload_data_t));
         if (data == NULL) {
@@ -369,13 +369,13 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
 
         if (*data->filename == '\0' && conn->post != NULL) {
             size_t len = sizeof(data->filepath) - data->filepath_len;
-            ehttpd_find_param("filename", conn->post->buf, data->filename,
+            cwhttpd_find_param("filename", conn->post->buf, data->filename,
                     &len);
         }
 
         if (*data->filename == '\0') {
             size_t len = sizeof(data->filepath) - data->filepath_len;
-            ehttpd_find_param("filename", conn->args, data->filename,
+            cwhttpd_find_param("filename", conn->args, data->filename,
                     &len);
         }
 
@@ -428,7 +428,7 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn)
 
 err:
     if (conn->post->received != conn->post->len) {
-        return EHTTPD_STATUS_MORE;
+        return CWHTTPD_STATUS_MORE;
     }
 
     /* we're done */
@@ -442,13 +442,13 @@ err:
             data->b_written, data->state == UPSTATE_DONE);
     free(data);
 
-    ehttpd_response(conn, 200);
-    ehttpd_send_header(conn, "Cache-Control",
+    cwhttpd_response(conn, 200);
+    cwhttpd_send_header(conn, "Cache-Control",
             "no-store, must-revalidate, no-cache, max-age=0");
-    ehttpd_send_header(conn, "Content-Type", "application/json; charset=utf-8");
-    ehttpd_enqueue(conn, json, -1);
+    cwhttpd_send_header(conn, "Content-Type", "application/json; charset=utf-8");
+    cwhttpd_enqueue(conn, json, -1);
     free(json);
 
-    return EHTTPD_STATUS_DONE;
+    return CWHTTPD_STATUS_DONE;
 }
 #endif

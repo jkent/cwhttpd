@@ -1,5 +1,5 @@
-libesphttpd Documentation
-=========================
+Clockwise HTTPd Documentation
+=============================
 
 .. toctree::
    :maxdepth: 2

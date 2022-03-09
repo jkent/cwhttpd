@@ -22,15 +22,15 @@ extern "C" {
 /**
  * \brief Header callback function prototype
  */
-typedef void (*ehttpd_header_cb_t)(
-    ehttpd_conn_t *conn /** [in] connection instance */
+typedef void (*cwhttpd_header_cb_t)(
+    cwhttpd_conn_t *conn /** [in] connection instance */
 );
 
 /**
  * \brief Template callback function prototype
  */
-typedef void (*ehttpd_tpl_cb_t)(
-    ehttpd_conn_t *conn, /** [in] connection instance */
+typedef void (*cwhttpd_tpl_cb_t)(
+    cwhttpd_conn_t *conn, /** [in] connection instance */
     char *token, /** [in] current template token or NULL if end */
     void **user  /** [in,out] user data double pointer, NULL on first token */
 );
@@ -50,53 +50,53 @@ typedef void (*ehttpd_tpl_cb_t)(
  *
  *   1. ::
  *
- *       EHTTPD_ROUTE_FS("*", NULL),
+ *       CWHTTPD_ROUTE_FS("*", NULL),
  *
  *     The request **GET** ``/index.html`` would map to the filesystem path
  *     ``/index.html``.
  *
  *   2. ::
  *
- *         EHTTPD_ROUTE_FS("*", "/test"),
+ *         CWHTTPD_ROUTE_FS("*", "/test"),
  *
  *      The request **GET** ``/index.html`` would map to the filesystem path
  *      ``/test/index.html``.
  *
  *   3. ::
  *
- *         EHTTPD_ROUTE_FS("*", "/test/index.html"),
+ *         CWHTTPD_ROUTE_FS("*", "/test/index.html"),
  *
  *      The request **GET** ``/anything.html`` would map to the filesystem
  *      path ``/test/index.html``.
  *
  *   4. ::
  *
- *         ehttpd_route_fs_t arg = {
+ *         cwhttpd_route_fs_t arg = {
  *             .basepath = '/test',
  *         };
  *
  *      ::
  *
- *         EHTTPD_ROUTE_FS_EX("*", &arg),
+ *         CWHTTPD_ROUTE_FS_EX("*", &arg),
  *
  *      The request **GET** ``/index.html`` would map to the filesystem
  *      path ``/test/index.html``.
  *
  *   5. ::
  *
- *         ehttpd_route_fs_t arg = {
+ *         cwhttpd_route_fs_t arg = {
  *             .basepath = '/test/index.html',
  *         };
  *
  *      ::
  *
- *         EHTTPD_ROUTE_FS_EX("*", &arg),
+ *         CWHTTPD_ROUTE_FS_EX("*", &arg),
  *
  *      The request **GET** ``/anything.html`` would map to the filesystem
  *      path ``/test/index.html``.
  *
  * \endverbatim */
-ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fs_get(cwhttpd_conn_t *conn);
 
 /**
  * \brief Filesystem template route handler
@@ -105,14 +105,14 @@ ehttpd_status_t ehttpd_route_fs_get(ehttpd_conn_t *conn);
  * \verbatim embed:rst:leading-asterisk
  *
  * This handler processes files with a user template callback. arg and
- * **basepath** work the same way as :cpp:func:`ehttpd_route_file_get()`,
+ * **basepath** work the same way as :cpp:func:`cwhttpd_route_file_get()`,
  * except that in the case of a directory, ``index.tpl`` is tried next.
  *
  * **arg2** or **template_cb** gets called every time it finds a
  * ``%token%`` in the template file, allowing you to emit dynamic content.
  *
  * \endverbatim */
-ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fs_tpl(cwhttpd_conn_t *conn);
 
 /**
  * \brief POST/PUT handler for uploading files
@@ -121,7 +121,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn);
  * \verbatim embed:rst:leading-asterisk
  *
  * If http method is not **PUT** or **POST**, this route handler returns
- * **EHTTPD_STATUS_NOTFOUND** so a route handler fallthrough can occur.
+ * **CWHTTPD_STATUS_NOTFOUND** so a route handler fallthrough can occur.
  *
  * Specify base directory (with trailing slash) or single file as first arg.
  *
@@ -134,7 +134,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn);
  * Usage:
  * ::
  *
- *   EHTTPD_ROUTE_ARG("*", ehttpd_route_fs_put, "/base/directory/")
+ *   CWHTTPD_ROUTE_ARG("*", cwhttpd_route_fs_put, "/base/directory/")
  *
  * * Allows creating/replacing files anywhere under "/base/directory/".  Don't
  *   forget to specify trailing slash in arg!
@@ -142,7 +142,7 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn);
  *
  * ::
  *
- *   EHTTPD_ROUTE_ARG("/upload.cgi", ehttpd_route_fs_put, "/sdcard/")
+ *   CWHTTPD_ROUTE_ARG("/upload.cgi", cwhttpd_route_fs_put, "/sdcard/")
  *
  * * Allows creating/replacing files anywhere under "/sdcard/".  Don't
  *   forget to specify trailing slash in arg!
@@ -151,12 +151,12 @@ ehttpd_status_t ehttpd_route_fs_tpl(ehttpd_conn_t *conn);
  *
  * ::
  *
- *   EHTTPD_ROUTE_ARG("/file.txt", ehttpd_route_fs_put, "/sdcard/file.txt")
+ *   CWHTTPD_ROUTE_ARG("/file.txt", cwhttpd_route_fs_put, "/sdcard/file.txt")
  *
  * * Allows only replacing content of one file at "/sdcard/file.txt".
  * * example: **POST** or **PUT** ``/file.txt``
  * \endverbatim */
-ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fs_put(cwhttpd_conn_t *conn);
 
 /****************************
  * \section Redirect Routes
@@ -172,10 +172,10 @@ ehttpd_status_t ehttpd_route_fs_put(ehttpd_conn_t *conn);
  *
  * Example::
  *
- *     EHTTPD_ROUTE_ARG("/", ehttpd_route_redirect, "/index.html"),
+ *     CWHTTPD_ROUTE_ARG("/", cwhttpd_route_redirect, "/index.html"),
  *
  * \endverbatim */
-ehttpd_status_t ehttpd_route_redirect(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_redirect(cwhttpd_conn_t *conn);
 
 /** \brief URL redirect to a new hostname if not on current hostname
  *
@@ -195,16 +195,16 @@ ehttpd_status_t ehttpd_route_redirect(ehttpd_conn_t *conn);
  * redirected to.
  *
  * If the hostname matches the hostname specified in arg then this route
- * handler will return **EHTTPD_STATUS_NOTFOUND**, causing the libesphttpd
+ * handler will return **CWHTTPD_STATUS_NOTFOUND**, causing the libesphttpd
  * server to skip over this route handler and to continue processing with the
  * next route.
  *
  * Example::
  *
- *     EHTTPD_ROUTE_ARG("*", ehttpd_route_redirect_hostname, "esp.nonet"),
+ *     CWHTTPD_ROUTE_ARG("*", cwhttpd_route_redirect_hostname, "esp.nonet"),
  *
  * \endverbatim */
-ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_redirect_hostname(cwhttpd_conn_t *conn);
 
 
 /************************
@@ -217,12 +217,12 @@ ehttpd_status_t ehttpd_route_redirect_hostname(ehttpd_conn_t *conn);
  * \par Description
  * \verbatim embed:rst:leading-asterisk
  *
- * Used with :cpp:func:`ehttpd_route_auth_basic()`. Function should
+ * Used with :cpp:func:`cwhttpd_route_auth_basic()`. Function should
  * return username/passwords indexed by **no**.
  *
  * \endverbatim */
-typedef int (*ehttpd_auth_account_cb_t)(
-    ehttpd_conn_t *conn, /** [in] connection instance */
+typedef int (*cwhttpd_auth_account_cb_t)(
+    cwhttpd_conn_t *conn, /** [in] connection instance */
     int index, /** [in] account index */
     char *user, /** [out] username */
     int user_len, /** [in] user max length */
@@ -237,17 +237,17 @@ typedef int (*ehttpd_auth_account_cb_t)(
  * \verbatim embed:rst:leading-asterisk
  *
  * The **arg** is expected to be a callback function of
- * :cpp:type:`ehttpd_auth_account_cb_t` type.
+ * :cpp:type:`cwhttpd_auth_account_cb_t` type.
  *
  * \endverbatim */
-ehttpd_status_t ehttpd_route_auth_basic(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_auth_basic(cwhttpd_conn_t *conn);
 
 
 /*****************************
  * \section Websocket Routes
  *****************************/
 
-ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_ws(cwhttpd_conn_t *conn);
 
 
 /************************
@@ -255,17 +255,17 @@ ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn);
  ************************/
 
 #if defined(ESP_PLATFORM)
-esp_err_t ehttpd_wifi_init(void);
-void ehttpd_wifi_event_cb(system_event_t *event);
-ehttpd_status_t ehttpd_tpl_wlan(ehttpd_conn_t *conn, char *token, void **arg);
+esp_err_t cwhttpd_wifi_init(void);
+void cwhttpd_wifi_event_cb(system_event_t *event);
+cwhttpd_status_t cwhttpd_tpl_wlan(cwhttpd_conn_t *conn, char *token, void **arg);
 
-ehttpd_status_t ehttpd_route_wifi_scan(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_wifi(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_wifi_connect(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_wifi_set_mode(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_wifi_ap_settings(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_wifi_status(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi_scan(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi_connect(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi_set_mode(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi_ap_settings(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi_status(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_wifi_start_wps(cwhttpd_conn_t *conn);
 #endif
 
 
@@ -274,12 +274,12 @@ ehttpd_status_t ehttpd_route_wifi_start_wps(ehttpd_conn_t *conn);
  *************************/
 
 #if defined(ESP_PLATFORM)
-ehttpd_status_t ehttpd_route_fw_get_next(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_fw_upload(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_fw_reboot(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_fw_set_boot(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_fw_erase_flash(ehttpd_conn_t *conn);
-ehttpd_status_t ehttpd_route_fw_get_flash_info(ehttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fw_get_next(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fw_upload(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fw_reboot(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fw_set_boot(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fw_erase_flash(cwhttpd_conn_t *conn);
+cwhttpd_status_t cwhttpd_route_fw_get_flash_info(cwhttpd_conn_t *conn);
 #endif
 
 

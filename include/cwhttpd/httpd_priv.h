@@ -12,12 +12,12 @@
 /**
  * \brief Max length of request head.
  */
-#ifndef CONFIG_EHTTPD_MAX_REQUEST_SIZE
-# define CONFIG_EHTTPD_MAX_REQUEST_SIZE 1024
+#ifndef CONFIG_CWHTTPD_MAX_REQUEST_SIZE
+# define CONFIG_CWHTTPD_MAX_REQUEST_SIZE 1024
 #endif
 
-typedef struct ehttpd_conn_t ehttpd_conn_t;
-typedef struct ehttpd_conn_priv_t ehttpd_conn_priv_t;
+typedef struct cwhttpd_conn_t cwhttpd_conn_t;
+typedef struct cwhttpd_conn_priv_t cwhttpd_conn_priv_t;
 
 // Struct to keep extension->mime data in
 typedef struct {
@@ -66,8 +66,8 @@ enum {
 /**
  * \brief Private data for HTTP connection
  */
-struct ehttpd_conn_priv_t {
-    char req[CONFIG_EHTTPD_MAX_REQUEST_SIZE]; /**< request and header data */
+struct cwhttpd_conn_priv_t {
+    char req[CONFIG_CWHTTPD_MAX_REQUEST_SIZE]; /**< request and header data */
     char *data;
     size_t req_len;
     size_t chunk_left;

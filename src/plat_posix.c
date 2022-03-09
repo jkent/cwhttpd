@@ -8,8 +8,8 @@
 
 #include "cb.h"
 #include "log.h"
-#include "libesphttpd/httpd.h"
-#include "libesphttpd/port.h"
+#include "cwhttpd/httpd.h"
+#include "cwhttpd/port.h"
 
 #if defined(ESP_PLATFORM)
 # include <freertos/FreeRTOS.h>
@@ -30,7 +30,7 @@
 # include <lwip/sockets.h>
 #endif /* defined(ESP_PLATFORM) */
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
 # include <mbedtls/platform.h>
 # include <mbedtls/entropy.h>
 # include <mbedtls/ctr_drbg.h>
@@ -43,36 +43,36 @@
 
 #pragma GCC diagnostic ignored "-Wunused-label"
 
-#ifndef CONFIG_EHTTPD_LISTENER_STACK_SIZE
-# define CONFIG_EHTTPD_LISTENER_STACK_SIZE 1024
+#ifndef CONFIG_CWHTTPD_LISTENER_STACK_SIZE
+# define CONFIG_CWHTTPD_LISTENER_STACK_SIZE 1024
 #endif
 
-#ifndef CONFIG_EHTTPD_LISTENER_PRIORITY
-# define CONFIG_EHTTPD_LISTENER_PRIORITY 1
+#ifndef CONFIG_CWHTTPD_LISTENER_PRIORITY
+# define CONFIG_CWHTTPD_LISTENER_PRIORITY 1
 #endif
 
-#ifndef CONFIG_EHTTPD_LISTENER_AFFINITY
-# define CONFIG_EHTTPD_LISTENER_AFFINITY 0
+#ifndef CONFIG_CWHTTPD_LISTENER_AFFINITY
+# define CONFIG_CWHTTPD_LISTENER_AFFINITY 0
 #endif
 
-#ifndef CONFIG_EHTTPD_WORKER_STACK_SIZE
-# define CONFIG_EHTTPD_WORKER_STACK_SIZE 1024
+#ifndef CONFIG_CWHTTPD_WORKER_STACK_SIZE
+# define CONFIG_CWHTTPD_WORKER_STACK_SIZE 1024
 #endif
 
-#ifndef CONFIG_EHTTPD_WORKER_PRIORITY
-# define CONFIG_EHTTPD_WORKER_PRIORITY 1
+#ifndef CONFIG_CWHTTPD_WORKER_PRIORITY
+# define CONFIG_CWHTTPD_WORKER_PRIORITY 1
 #endif
 
-#ifndef CONFIG_EHTTPD_WORKER_AFFINITY
-# define CONFIG_EHTTPD_WORKER_AFFINITY 0
+#ifndef CONFIG_CWHTTPD_WORKER_AFFINITY
+# define CONFIG_CWHTTPD_WORKER_AFFINITY 0
 #endif
 
-#ifndef CONFIG_EHTTPD_WORKER_COUNT
-# define CONFIG_EHTTPD_WORKER_COUNT 8
+#ifndef CONFIG_CWHTTPD_WORKER_COUNT
+# define CONFIG_CWHTTPD_WORKER_COUNT 8
 #endif
 
-#ifndef CONFIG_EHTTPD_LISTENER_BACKLOG
-# define CONFIG_EHTTPD_LISTENER_BACKLOG 2
+#ifndef CONFIG_CWHTTPD_LISTENER_BACKLOG
+# define CONFIG_CWHTTPD_LISTENER_BACKLOG 2
 #endif
 
 #define inst_to_pinst(container) container_of(container, posix_inst_t, inst)
@@ -80,7 +80,7 @@
 
 typedef struct posix_conn_t posix_conn_t;
 typedef struct posix_inst_t posix_inst_t;
-#if defined(CONFIG_EHTTPD_MBEDTLS)
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
 typedef struct SSL_CTX SSL_CTX;
 
 struct SSL_CTX {
@@ -90,7 +90,7 @@ struct SSL_CTX {
     mbedtls_x509_crt cert;
     mbedtls_pk_context pkey;
 };
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
 typedef struct conn_data_t {
     int fd;
@@ -98,35 +98,35 @@ typedef struct conn_data_t {
 } conn_data_t;
 
 struct posix_conn_t {
-    ehttpd_conn_t conn;
-    ehttpd_thread_t *thread;
+    cwhttpd_conn_t conn;
+    cwhttpd_thread_t *thread;
     conn_data_t conn_data;
     bool error;
-#if defined(CONFIG_EHTTPD_MBEDTLS)
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
     mbedtls_ssl_context ssl;
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 };
 
 struct posix_inst_t {
-    ehttpd_inst_t inst;
-    ehttpd_flags_t flags;
+    cwhttpd_inst_t inst;
+    cwhttpd_flags_t flags;
 
-    ehttpd_thread_t *thread;
+    cwhttpd_thread_t *thread;
 
     struct sockaddr_in listen_addr;
     int listen_fd;
 
     conn_data_t conn_data;
     int num_connections;
-    ehttpd_semaphore_t *conn_empty;
-    ehttpd_semaphore_t *conn_full;
+    cwhttpd_semaphore_t *conn_empty;
+    cwhttpd_semaphore_t *conn_full;
 
-    ehttpd_semaphore_t *shutdown;
+    cwhttpd_semaphore_t *shutdown;
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
     SSL_CTX *ssl;
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
-    posix_conn_t pconn[CONFIG_EHTTPD_WORKER_COUNT];
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
+    posix_conn_t pconn[CONFIG_CWHTTPD_WORKER_COUNT];
 };
 
 /* Forward declarations */
@@ -138,43 +138,43 @@ static void worker_task(void *arg);
  * \section Instance Functions
  *******************************/
 
-void ehttpd_destroy(ehttpd_inst_t *inst)
+void cwhttpd_destroy(cwhttpd_inst_t *inst)
 {
     posix_inst_t *pinst = inst_to_pinst(inst);
 
     int num_workers = 0;
-    for (int i = 0; i < CONFIG_EHTTPD_WORKER_COUNT; i++) {
+    for (int i = 0; i < CONFIG_CWHTTPD_WORKER_COUNT; i++) {
         if (pinst->pconn[i].conn.inst != 0) {
             num_workers++;
         }
     }
 
-    pinst->shutdown = ehttpd_semaphore_create(UINT32_MAX,
-            CONFIG_EHTTPD_WORKER_COUNT - num_workers);
-    for (int i = 0; i < CONFIG_EHTTPD_WORKER_COUNT; i++) {
-        ehttpd_semaphore_take(pinst->shutdown, UINT32_MAX);
+    pinst->shutdown = cwhttpd_semaphore_create(UINT32_MAX,
+            CONFIG_CWHTTPD_WORKER_COUNT - num_workers);
+    for (int i = 0; i < CONFIG_CWHTTPD_WORKER_COUNT; i++) {
+        cwhttpd_semaphore_take(pinst->shutdown, UINT32_MAX);
     }
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-    if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+    if (pinst->flags & CWHTTPD_FLAG_TLS) {
         free(pinst->ssl);
     }
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
     while (pinst->inst.route_head) {
-        ehttpd_route_remove(&pinst->inst, 0);
+        cwhttpd_route_remove(&pinst->inst, 0);
     }
 
-    ehttpd_semaphore_delete(pinst->conn_empty);
-    ehttpd_semaphore_delete(pinst->conn_full);
+    cwhttpd_semaphore_delete(pinst->conn_empty);
+    cwhttpd_semaphore_delete(pinst->conn_full);
 
-    ehttpd_semaphore_delete(pinst->shutdown);
-    ehttpd_thread_t *thread = pinst->thread;
+    cwhttpd_semaphore_delete(pinst->shutdown);
+    cwhttpd_thread_t *thread = pinst->thread;
     free(pinst);
-    ehttpd_thread_delete(thread);
+    cwhttpd_thread_delete(thread);
 }
 
-ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
+cwhttpd_inst_t *cwhttpd_init(const char *addr, cwhttpd_flags_t flags)
 {
     posix_inst_t *pinst =
             (posix_inst_t *) calloc(1, sizeof(posix_inst_t));
@@ -185,17 +185,17 @@ ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
 
     pinst->flags = flags;
 
-#if !defined(CONFIG_EHTTPD_MBEDTLS)
-    if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if !defined(CONFIG_CWHTTPD_MBEDTLS)
+    if (pinst->flags & CWHTTPD_FLAG_TLS) {
         LOGW(__func__, "TLS support not enabled in");
-        pinst->flags &= ~EHTTPD_FLAG_TLS;
+        pinst->flags &= ~CWHTTPD_FLAG_TLS;
     }
-#endif /* !defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* !defined(CONFIG_CWHTTPD_MBEDTLS) */
 
     pinst->listen_fd = -1;
 
     if (addr == NULL) {
-        addr = (pinst->flags & EHTTPD_FLAG_TLS) ? "0.0.0.0:443" :
+        addr = (pinst->flags & CWHTTPD_FLAG_TLS) ? "0.0.0.0:443" :
                 "0.0.0.0:80";
     }
 
@@ -209,8 +209,8 @@ ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
     inet_pton(AF_INET, s, &pinst->listen_addr.sin_addr);
     free(s);
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-    if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+    if (pinst->flags & CWHTTPD_FLAG_TLS) {
         int ret;
         pinst->ssl = malloc(sizeof(SSL_CTX));
         if (pinst->ssl == NULL) {
@@ -238,43 +238,43 @@ ehttpd_inst_t *ehttpd_init(const char *addr, ehttpd_flags_t flags)
         mbedtls_ssl_conf_rng(&pinst->ssl->conf, mbedtls_ctr_drbg_random,
                 &pinst->ssl->ctr_drbg);
     }
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
-    pinst->conn_empty = ehttpd_semaphore_create(1, 1);
-    pinst->conn_full = ehttpd_semaphore_create(1, 0);
+    pinst->conn_empty = cwhttpd_semaphore_create(1, 1);
+    pinst->conn_full = cwhttpd_semaphore_create(1, 0);
 
     return &pinst->inst;
 
 cleanup:
-    ehttpd_destroy(&pinst->inst);
+    cwhttpd_destroy(&pinst->inst);
     return NULL;
 }
 
-bool ehttpd_start(ehttpd_inst_t *inst)
+bool cwhttpd_start(cwhttpd_inst_t *inst)
 {
     posix_inst_t *pinst = inst_to_pinst(inst);
 
-    ehttpd_thread_attr_t thread_attr = {
-        .name = "ehttp_listener",
-        .stack_size = CONFIG_EHTTPD_LISTENER_STACK_SIZE,
-        .priority = CONFIG_EHTTPD_LISTENER_PRIORITY,
-        .affinity = CONFIG_EHTTPD_LISTENER_AFFINITY,
+    cwhttpd_thread_attr_t thread_attr = {
+        .name = 'httpd_listener",
+        .stack_size = CONFIG_CWHTTPD_LISTENER_STACK_SIZE,
+        .priority = CONFIG_CWHTTPD_LISTENER_PRIORITY,
+        .affinity = CONFIG_CWHTTPD_LISTENER_AFFINITY,
     };
-    pinst->thread = ehttpd_thread_create(listener_task, pinst,
+    pinst->thread = cwhttpd_thread_create(listener_task, pinst,
             &thread_attr);
     if (pinst->thread == NULL) {
         LOGE(__func__, "listener thread");
         goto err;
     }
 
-    thread_attr.name = "ehttp_worker";
-    thread_attr.stack_size = CONFIG_EHTTPD_WORKER_STACK_SIZE;
-    thread_attr.priority = CONFIG_EHTTPD_WORKER_PRIORITY;
-    thread_attr.affinity = CONFIG_EHTTPD_WORKER_AFFINITY;
-    for (int i = 0; i < CONFIG_EHTTPD_WORKER_COUNT; i++) {
+    thread_attr.name = "httpd_worker";
+    thread_attr.stack_size = CONFIG_CWHTTPD_WORKER_STACK_SIZE;
+    thread_attr.priority = CONFIG_CWHTTPD_WORKER_PRIORITY;
+    thread_attr.affinity = CONFIG_CWHTTPD_WORKER_AFFINITY;
+    for (int i = 0; i < CONFIG_CWHTTPD_WORKER_COUNT; i++) {
         posix_conn_t *pconn = &pinst->pconn[i];
         pconn->conn.inst = &pinst->inst;
-        pconn->thread = ehttpd_thread_create(worker_task, pconn,
+        pconn->thread = cwhttpd_thread_create(worker_task, pconn,
                 &thread_attr);
         if (pconn->thread == NULL) {
             LOGE(__func__, "worker thread");
@@ -285,18 +285,18 @@ bool ehttpd_start(ehttpd_inst_t *inst)
     return true;
 
 err:
-    ehttpd_destroy(inst);
+    cwhttpd_destroy(inst);
     return false;
 }
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+void cwhttpd_set_cert_and_key(cwhttpd_inst_t *inst, const void *cert,
         size_t cert_len, const void *priv_key,
         size_t priv_key_len)
 {
     posix_inst_t *pinst = inst_to_pinst(inst);
 
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & CWHTTPD_FLAG_TLS)) {
         LOGW(__func__, "cannot add cert to non-tls instance");
         return;
     }
@@ -309,8 +309,14 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
         return;
     }
 
+#if MBEDTLS_VERSION_MAJOR < 3
     ret = mbedtls_pk_parse_key(&pinst->ssl->pkey,
             (const unsigned char *) priv_key, priv_key_len, NULL, 0);
+#else
+    ret = mbedtls_pk_parse_key(&pinst->ssl->pkey,
+            (const unsigned char *) priv_key, priv_key_len, NULL, 0,
+            mbedtls_ctr_drbg_random, NULL);
+#endif
     if (ret != 0) {
         LOGE(__func__, "cannot add private key");
         return;
@@ -323,11 +329,11 @@ void ehttpd_set_cert_and_key(ehttpd_inst_t *inst, const void *cert,
     }
 }
 
-void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
+void cwhttpd_set_client_validation(cwhttpd_inst_t *inst, bool enable)
 {
     posix_inst_t *pinst = inst_to_pinst(inst);
 
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & CWHTTPD_FLAG_TLS)) {
         LOGW(__func__, "cannot set authmode on non-tls instance");
         return;
     }
@@ -336,12 +342,12 @@ void ehttpd_set_client_validation(ehttpd_inst_t *inst, bool enable)
             enable ? MBEDTLS_SSL_VERIFY_REQUIRED : MBEDTLS_SSL_VERIFY_NONE);
 }
 
-void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
+void cwhttpd_add_client_cert(cwhttpd_inst_t *inst, const void *cert,
         size_t cert_len)
 {
     posix_inst_t *pinst = inst_to_pinst(inst);
 
-    if (!(pinst->flags & EHTTPD_FLAG_TLS)) {
+    if (!(pinst->flags & CWHTTPD_FLAG_TLS)) {
         LOGW(__func__, "cannot add cert to non-tls instance");
         return;
     }
@@ -353,21 +359,21 @@ void ehttpd_add_client_cert(ehttpd_inst_t *inst, const void *cert,
         LOGE(__func__, "cannot add cert");
     }
 }
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
 
 /*********************************
  * \section Connection Functions
  *********************************/
 
-bool ehttpd_plat_is_ssl(ehttpd_conn_t *conn)
+bool cwhttpd_plat_is_ssl(cwhttpd_conn_t *conn)
 {
     posix_inst_t *pinst = inst_to_pinst(conn->inst);
 
-    return pinst->flags & EHTTPD_FLAG_TLS;
+    return pinst->flags & CWHTTPD_FLAG_TLS;
 }
 
-ssize_t ehttpd_plat_send(ehttpd_conn_t *conn, const void *buf, size_t len)
+ssize_t cwhttpd_plat_send(cwhttpd_conn_t *conn, const void *buf, size_t len)
 {
     ssize_t ret = -1;
     posix_conn_t *pconn = conn_to_pconn(conn);
@@ -377,8 +383,8 @@ ssize_t ehttpd_plat_send(ehttpd_conn_t *conn, const void *buf, size_t len)
         return 0;
     }
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-    if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+    if (pinst->flags & CWHTTPD_FLAG_TLS) {
         ret = mbedtls_ssl_write(&pconn->ssl, buf, len);
         if (ret < 0) {
             pconn->error = true;
@@ -389,7 +395,7 @@ ssize_t ehttpd_plat_send(ehttpd_conn_t *conn, const void *buf, size_t len)
             }
         }
     } else
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
     {
         ret = write(pconn->conn_data.fd, buf, len);
         if (ret < 0) {
@@ -408,14 +414,14 @@ ssize_t ehttpd_plat_send(ehttpd_conn_t *conn, const void *buf, size_t len)
     return ret;
 }
 
-ssize_t ehttpd_plat_recv(ehttpd_conn_t *conn, void *buf, size_t len)
+ssize_t cwhttpd_plat_recv(cwhttpd_conn_t *conn, void *buf, size_t len)
 {
     posix_conn_t *pconn = conn_to_pconn(conn);
     posix_inst_t *pinst = inst_to_pinst(conn->inst);
     ssize_t ret = -1;
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-    if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+    if (pinst->flags & CWHTTPD_FLAG_TLS) {
         ret = mbedtls_ssl_read(&pconn->ssl, buf, len);
         if (ret < 0) {
             if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
@@ -429,7 +435,7 @@ ssize_t ehttpd_plat_recv(ehttpd_conn_t *conn, void *buf, size_t len)
             }
         }
     } else
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
     {
         ret = recv(pconn->conn_data.fd, buf, len, 0);
         if (ret < 0) {
@@ -477,7 +483,7 @@ static void listener_task(void *arg)
         goto cleanup;
     }
 
-    if (listen(pinst->listen_fd, CONFIG_EHTTPD_LISTENER_BACKLOG) < 0) {
+    if (listen(pinst->listen_fd, CONFIG_CWHTTPD_LISTENER_BACKLOG) < 0) {
         LOGE(__func__, "unable to listen on TCP %s:%d", buf,
                 ntohs(pinst->listen_addr.sin_port));
         goto cleanup;
@@ -485,7 +491,7 @@ static void listener_task(void *arg)
 
     LOGI(__func__, "esphttpd listening on TCP %s:%d%s", buf,
             ntohs(pinst->listen_addr.sin_port),
-            (pinst->flags & EHTTPD_FLAG_TLS) ? " TLS" : "");
+            (pinst->flags & CWHTTPD_FLAG_TLS) ? " TLS" : "");
 
     while (!pinst->shutdown) {
         fd_set read_set;
@@ -501,30 +507,30 @@ static void listener_task(void *arg)
         }
 
         while (!pinst->shutdown) {
-            if (ehttpd_semaphore_take(pinst->conn_empty, 250)) {
+            if (cwhttpd_semaphore_take(pinst->conn_empty, 250)) {
                 break;
             }
         }
         if (pinst->shutdown) {
-            ehttpd_semaphore_give(pinst->conn_empty);
+            cwhttpd_semaphore_give(pinst->conn_empty);
             break;
         }
         socklen_t len = sizeof(pinst->conn_data.addr);
         pinst->conn_data.fd = accept(pinst->listen_fd,
                 (struct sockaddr *) &pinst->conn_data.addr, &len);
         if (pinst->conn_data.fd < 0) {
-            ehttpd_semaphore_give(pinst->conn_empty);
+            cwhttpd_semaphore_give(pinst->conn_empty);
             LOGE(__func__, "accept failed");
             continue;
         }
-        ehttpd_semaphore_give(pinst->conn_full);
+        cwhttpd_semaphore_give(pinst->conn_full);
     }
 
 cleanup:
     close(pinst->listen_fd);
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-    if (pinst->flags & EHTTPD_FLAG_TLS && pinst->ssl) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+    if (pinst->flags & CWHTTPD_FLAG_TLS && pinst->ssl) {
         mbedtls_x509_crt_free(&pinst->ssl->cert);
         mbedtls_pk_free(&pinst->ssl->pkey);
         mbedtls_ssl_config_free(&pinst->ssl->conf);
@@ -532,11 +538,11 @@ cleanup:
         mbedtls_entropy_free(&pinst->ssl->entropy);
         free(pinst->ssl);
     }
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
-    ehttpd_thread_t *thread = pinst->thread;
-    ehttpd_destroy(&pinst->inst);
-    ehttpd_thread_delete(thread);
+    cwhttpd_thread_t *thread = pinst->thread;
+    cwhttpd_destroy(&pinst->inst);
+    cwhttpd_thread_delete(thread);
 }
 
 
@@ -551,38 +557,38 @@ static void worker_task(void *arg)
 
     while (true) {
         while (!pinst->shutdown) {
-            if (ehttpd_semaphore_take(pinst->conn_full, 250)) {
+            if (cwhttpd_semaphore_take(pinst->conn_full, 250)) {
                 break;
             }
 
         }
         if (pinst->shutdown) {
-            ehttpd_semaphore_give(pinst->conn_full);
+            cwhttpd_semaphore_give(pinst->conn_full);
             break;
         }
         pinst->num_connections++;
-        if (pinst->num_connections == CONFIG_EHTTPD_WORKER_COUNT) {
+        if (pinst->num_connections == CONFIG_CWHTTPD_WORKER_COUNT) {
             pconn->conn.priv.flags |= HFL_REQUEST_CLOSE;
         }
         memcpy(&pconn->conn_data, &pinst->conn_data, sizeof(pconn->conn_data));
-        ehttpd_semaphore_give(pinst->conn_empty);
+        cwhttpd_semaphore_give(pinst->conn_empty);
 
         char ipstr[16];
         inet_ntop(AF_INET, &pconn->conn_data.addr.sin_addr, ipstr,
                 sizeof(ipstr));
         LOGD(__func__, "new connection from %s:%d%s %p", ipstr,
                 ntohs(pconn->conn_data.addr.sin_port),
-                pinst->flags & EHTTPD_FLAG_TLS ? " TLS" : "", pconn);
+                pinst->flags & CWHTTPD_FLAG_TLS ? " TLS" : "", pconn);
 
         int keepAlive = 1;
         int keepIdle = 60;
         int keepInterval = 5;
         int keepCount = 3;
         int nodelay = 0;
-#if defined(CONFIG_EHTTPD_TCP_NODELAY)
+#if defined(CONFIG_CWHTTPD_TCP_NODELAY)
         nodelay = 1; // enable TCP_NODELAY to speed-up transfers of small
                      // files. See Nagle's Algorithm.
-#endif /* defined(CONFIG_EHTTPD_TCP_NODELAY) */
+#endif /* defined(CONFIG_CWHTTPD_TCP_NODELAY) */
 
         setsockopt(pconn->conn_data.fd, SOL_SOCKET, SO_KEEPALIVE,
                 (void *) &keepAlive, sizeof(keepAlive));
@@ -595,8 +601,8 @@ static void worker_task(void *arg)
         setsockopt(pconn->conn_data.fd, IPPROTO_TCP, TCP_NODELAY,
                 (void *) &nodelay, sizeof(nodelay));
 
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-        if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+        if (pinst->flags & CWHTTPD_FLAG_TLS) {
             mbedtls_ssl_init(&pconn->ssl);
 
             int ret = mbedtls_ssl_setup(&pconn->ssl,
@@ -630,40 +636,40 @@ static void worker_task(void *arg)
                 continue;
             }
         }
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
-        ehttpd_new_conn_cb(&pconn->conn);
+        cwhttpd_new_conn_cb(&pconn->conn);
 
         if (!pconn->error) {
-#if defined(CONFIG_EHTTPD_MBEDTLS)
-            if (pinst->flags & EHTTPD_FLAG_TLS) {
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
+            if (pinst->flags & CWHTTPD_FLAG_TLS) {
                 int ret;
                 while ((ret = mbedtls_ssl_close_notify(&pconn->ssl)) < 0) {
                     LOGE(__func__, "mbedtls_ssl_close_notify %d", ret);
                     break;
                 }
             }
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
             shutdown(pconn->conn_data.fd, SHUT_RDWR);
         }
 
         close(pconn->conn_data.fd);
-#if defined(CONFIG_EHTTPD_MBEDTLS)
+#if defined(CONFIG_CWHTTPD_MBEDTLS)
         mbedtls_ssl_free(&pconn->ssl);
-#endif /* defined(CONFIG_EHTTPD_MBEDTLS) */
+#endif /* defined(CONFIG_CWHTTPD_MBEDTLS) */
 
         LOGD(__func__, "disconnected %p", pconn);
 
         pinst->num_connections--;
 
         /* Recycle the conn */
-        ehttpd_thread_t *thread = pconn->thread;
+        cwhttpd_thread_t *thread = pconn->thread;
         memset(pconn, 0, sizeof(*pconn));
         pconn->conn.inst = &pinst->inst;
         pconn->thread = thread;
     }
 
-    ehttpd_semaphore_give(pinst->shutdown);
-    ehttpd_thread_delete(pconn->thread);
+    cwhttpd_semaphore_give(pinst->shutdown);
+    cwhttpd_thread_delete(pconn->thread);
 }

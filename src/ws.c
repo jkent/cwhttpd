@@ -5,9 +5,9 @@
 #include "base64.h"
 #include "log.h"
 #include "sha1.h"
-#include "libesphttpd/route.h"
-#include "libesphttpd/httpd.h"
-#include "libesphttpd/ws.h"
+#include "cwhttpd/route.h"
+#include "cwhttpd/httpd.h"
+#include "cwhttpd/ws.h"
 
 #include <endian.h>
 #include <stdint.h>
@@ -60,10 +60,10 @@ enum {
 #define PAYLOAD_MASK ((uint8_t)0x7F)
 
 
-static ehttpd_ws_t *ws_head = NULL;
+static cwhttpd_ws_t *ws_head = NULL;
 
 
-static int send_frame_head(ehttpd_ws_t *ws, uint8_t opcode, size_t len)
+static int send_frame_head(cwhttpd_ws_t *ws, uint8_t opcode, size_t len)
 {
     uint8_t buf[14];
     int i = 0;
@@ -86,7 +86,7 @@ static int send_frame_head(ehttpd_ws_t *ws, uint8_t opcode, size_t len)
         buf[i++] = len;
     }
     LOGV(__func__, "payload of %d bytes", len);
-    return ehttpd_plat_send(ws->conn, buf, i);
+    return cwhttpd_plat_send(ws->conn, buf, i);
 }
 
 static void unmask(const uint8_t *mask, uint8_t *buf, size_t len)
@@ -106,7 +106,7 @@ static void unmask(const uint8_t *mask, uint8_t *buf, size_t len)
     }
 }
 
-ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
+ssize_t cwhttpd_ws_recv(cwhttpd_ws_t *ws, void *buf, size_t len)
 {
     size_t outlen = 0;
 
@@ -114,7 +114,7 @@ ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
         if (ws->priv.frame.len) {
             size_t recvlen = (ws->priv.frame.len < len) ?
                     ws->priv.frame.len : len;
-            ssize_t ret = ehttpd_recv(ws->conn, buf, recvlen);
+            ssize_t ret = cwhttpd_recv(ws->conn, buf, recvlen);
             if (ret < 0) {
                 return -1;
             }
@@ -126,45 +126,45 @@ ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
             outlen += ret;
 
             if (ws->priv.frame.len == 0) {
-                ws->flags |= EHTTPD_WS_FLAG_DONE;
+                ws->flags |= CWHTTPD_WS_FLAG_DONE;
                 return outlen;
             } else if (!(ws->priv.frame.flags & FLAG_FIN)) {
-                ws->flags |= EHTTPD_WS_FLAG_MORE;
+                ws->flags |= CWHTTPD_WS_FLAG_MORE;
             }
         } else {
-            ws->flags = EHTTPD_WS_FLAG_NONE;
-            ssize_t ret = ehttpd_recv(ws->conn, &ws->priv.frame, 2);
+            ws->flags = CWHTTPD_WS_FLAG_NONE;
+            ssize_t ret = cwhttpd_recv(ws->conn, &ws->priv.frame, 2);
             if (ret != 2) {
                 return -1;
             }
             ws->priv.frame.len = (ws->priv.frame.len8 & PAYLOAD_MASK);
             if (ws->priv.frame.len == 126) {
                 uint16_t len16;
-                ret = ehttpd_recv(ws->conn, &len16, 2);
+                ret = cwhttpd_recv(ws->conn, &len16, 2);
                 if (ret != 2) {
                     return -1;
                 }
                 ws->priv.frame.len = ntohs(len16);
             } else if (ws->priv.frame.len == 127) {
-                ret = ehttpd_recv(ws->conn, &ws->priv.frame.len, 8);
+                ret = cwhttpd_recv(ws->conn, &ws->priv.frame.len, 8);
                 if (ret != 8) {
                     return -1;
                 }
                 ws->priv.frame.len = be64toh(ws->priv.frame.len);
             }
             if (ws->priv.frame.len8 & IS_MASKED) {
-                ret = ehttpd_recv(ws->conn, ws->priv.frame.mask, 4);
+                ret = cwhttpd_recv(ws->conn, ws->priv.frame.mask, 4);
                 if (ret != 4) {
                     return -1;
                 }
             }
             switch (ws->priv.frame.flags & OPCODE_MASK) {
                 case OPCODE_CONTINUE:
-                    ws->flags |= EHTTPD_WS_FLAG_CONT;
+                    ws->flags |= CWHTTPD_WS_FLAG_CONT;
                     break;
 
                 case OPCODE_BINARY:
-                    ws->flags |= EHTTPD_WS_FLAG_BIN;
+                    ws->flags |= CWHTTPD_WS_FLAG_BIN;
                     /* fallthrough */
 
                 case OPCODE_TEXT:
@@ -173,12 +173,12 @@ ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
                 case OPCODE_CLOSE: {
                     uint16_t reason = htons(1000);
                     if (ws->priv.frame.len >= 2) {
-                        ret = ehttpd_recv(ws->conn, &reason, 2);
+                        ret = cwhttpd_recv(ws->conn, &reason, 2);
                         if (ret != 2) {
                             return -1;
                         }
                     }
-                    ehttpd_ws_close(ws, reason);
+                    cwhttpd_ws_close(ws, reason);
                     return 0;
                 }
 
@@ -187,13 +187,13 @@ ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
                     if (ws->priv.frame.len > sizeof(buf)) {
                         return -1;
                     }
-                    ret = ehttpd_recv(ws->conn, buf, ws->priv.frame.len);
+                    ret = cwhttpd_recv(ws->conn, buf, ws->priv.frame.len);
                     if (ret != ws->priv.frame.len) {
                         return -1;
                     }
                     send_frame_head(ws, OPCODE_PONG | FLAG_FIN,
                             ws->priv.frame.len);
-                    ehttpd_plat_send(ws->conn, buf, ret);
+                    cwhttpd_plat_send(ws->conn, buf, ret);
                     break;
                 }
 
@@ -213,47 +213,47 @@ ssize_t ehttpd_ws_recv(ehttpd_ws_t *ws, void *buf, size_t len)
     return outlen;
 }
 
-ssize_t ehttpd_ws_send(ehttpd_ws_t *ws, const void *buf, size_t len,
-        ehttpd_ws_flags_t flags)
+ssize_t cwhttpd_ws_send(cwhttpd_ws_t *ws, const void *buf, size_t len,
+        cwhttpd_ws_flags_t flags)
 {
     int fl = 0;
 
     // Continuation frame has opcode 0
-    if ((flags & EHTTPD_WS_FLAG_CONT) == 0) {
-        if (flags & EHTTPD_WS_FLAG_BIN) {
+    if ((flags & CWHTTPD_WS_FLAG_CONT) == 0) {
+        if (flags & CWHTTPD_WS_FLAG_BIN) {
             fl = OPCODE_BINARY;
         } else {
             fl = OPCODE_TEXT;
         }
     }
     // add FIN to last frame
-    if ((flags & EHTTPD_WS_FLAG_MORE) == 0) {
+    if ((flags & CWHTTPD_WS_FLAG_MORE) == 0) {
         fl |= FLAG_FIN;
     }
 
     send_frame_head(ws, fl, len);
-    return ehttpd_plat_send(ws->conn, buf, len);
+    return cwhttpd_plat_send(ws->conn, buf, len);
 }
 
-void ehttpd_ws_close(ehttpd_ws_t *ws, int reason)
+void cwhttpd_ws_close(cwhttpd_ws_t *ws, int reason)
 {
     uint8_t rs[2] = {reason >> 8, reason & 0xff};
     send_frame_head(ws, FLAG_FIN | OPCODE_CLOSE, 2);
-    ehttpd_plat_send(ws->conn, rs, 2);
+    cwhttpd_plat_send(ws->conn, rs, 2);
 }
 
 // Broadcast data to all WebSockets at a specific url. Returns the number of
 // connections sent to.
-int ehttpd_ws_broadcast(ehttpd_inst_t *inst, const char *resource,
+int cwhttpd_ws_broadcast(cwhttpd_inst_t *inst, const char *resource,
         const void *buf, int len, int flags)
 {
-    ehttpd_ws_t *lw = ws_head;
+    cwhttpd_ws_t *lw = ws_head;
     int ret = 0;
 
     while (lw != NULL) {
         if (lw->conn && (lw->conn->inst == inst) &&
                 (strcmp(lw->conn->request.url, resource) == 0)) {
-            if (ehttpd_ws_send(lw, buf, len, flags) >= 0) {
+            if (cwhttpd_ws_send(lw, buf, len, flags) >= 0) {
                 ret++;
             }
         }
@@ -264,22 +264,22 @@ int ehttpd_ws_broadcast(ehttpd_inst_t *inst, const char *resource,
 }
 
 // WebSocket route handler
-ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn)
+cwhttpd_status_t cwhttpd_route_ws(cwhttpd_conn_t *conn)
 {
     char buf[1024];
-    ehttpd_ws_t ws = { };
+    cwhttpd_ws_t ws = { };
     sha1nfo s;
 
-    const char *header = ehttpd_get_header(conn, "Upgrade");
+    const char *header = cwhttpd_get_header(conn, "Upgrade");
     if (header == NULL || strstr(header, "websocket") == NULL) {
-        ehttpd_response(conn, 500);
-        return EHTTPD_STATUS_CLOSE;
+        cwhttpd_response(conn, 500);
+        return CWHTTPD_STATUS_CLOSE;
     }
 
-    header = ehttpd_get_header(conn, "Sec-WebSocket-Key");
+    header = cwhttpd_get_header(conn, "Sec-WebSocket-Key");
     if (header == NULL) {
-        ehttpd_response(conn, 500);
-        return EHTTPD_STATUS_CLOSE;
+        cwhttpd_response(conn, 500);
+        return CWHTTPD_STATUS_CLOSE;
     }
 
     ws.conn = conn;
@@ -289,19 +289,19 @@ ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn)
     strlcat(buf, WS_GUID, sizeof(buf));
     sha1_init(&s);
     sha1_write(&s, buf, strlen(buf));
-    ehttpd_set_chunked(conn, false);
-    ehttpd_response(conn, 101);
-    ehttpd_send_header(conn, "Upgrade", "websocket");
-    ehttpd_send_header(conn, "Connection", "upgrade");
+    cwhttpd_set_chunked(conn, false);
+    cwhttpd_response(conn, 101);
+    cwhttpd_send_header(conn, "Upgrade", "websocket");
+    cwhttpd_send_header(conn, "Connection", "upgrade");
     base64_encode(20, sha1_result(&s), sizeof(buf), buf);
-    ehttpd_send_header(conn, "Sec-WebSocket-Accept", buf);
-    ehttpd_send(conn, NULL, 0); /* send end of header */
+    cwhttpd_send_header(conn, "Sec-WebSocket-Accept", buf);
+    cwhttpd_send(conn, NULL, 0); /* send end of header */
 
     // Insert ws into linked list
     if (ws_head == NULL) {
         ws_head = &ws;
     } else {
-        ehttpd_ws_t *lw = ws_head;
+        cwhttpd_ws_t *lw = ws_head;
         while (lw->priv.next) {
             lw = lw->priv.next;
         }
@@ -309,14 +309,14 @@ ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn)
     }
 
     // Call the handler
-    ehttpd_ws_handler_t ws_handler = conn->route->argv[0];
+    cwhttpd_ws_handler_t ws_handler = conn->route->argv[0];
     ws_handler(&ws);
 
     // Clean up linked list
     if (ws_head == &ws) {
         ws_head = ws.priv.next;
     } else if (ws_head) {
-        ehttpd_ws_t *lws = ws_head;
+        cwhttpd_ws_t *lws = ws_head;
         // Find ws that links to this one.
         while (lws != NULL && lws->priv.next != &ws) {
             lws = lws->priv.next;
@@ -326,5 +326,5 @@ ehttpd_status_t ehttpd_route_ws(ehttpd_conn_t *conn)
         }
     }
 
-    return EHTTPD_STATUS_CLOSE;
+    return CWHTTPD_STATUS_CLOSE;
 }
