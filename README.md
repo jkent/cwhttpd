@@ -291,8 +291,8 @@ be much more difficult to detect on an embedded platform. Valgrind and other
 tools also provide ways of looking at application performance that go beyond
 what is typically available in an embedded environment.
 
-See https://github.com/jkent/cwhttpd-example for an example of how to use
-Clockwise under Linux.
+See the [example project](https://github.com/jkent/cwhttpd-example) for an
+example of how to use Clockwise under Linux.
 
 # History and Licensing
 
