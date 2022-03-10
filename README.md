@@ -1,7 +1,7 @@
 # About Clockwise HTTPd
 
-Clockwise is a HTTP server library for the ESP8266/ESP32. It supports
-integration in projects running under the FreeRTOS-based SDKs. Its core is
+Clockwise HTTPd is an embedded HTTP server library. It was designed for
+Espressif FreeRTOS SDKs, and works on the ESP8266 and ESP32 SoCs. Its core is
 clean and small, but it provides an extensible architecture with plugins like
 a tiny template engine, websockets, a captive portal, and more.
 
@@ -296,7 +296,7 @@ example of how to use Clockwise under Linux.
 
 # History and Licensing
 
-Clockwise is a fork of libesphttpd by Chris Morgan, which is a fork of
+Clockwise HTTPd is a fork of libesphttpd by Chris Morgan, which is a fork of
 esphttpd by Jeroen Domburg (also known as Sprite_tm). The former is licensed
 under a 'Beer-ware' license (essentially public domain) and the later MPLv2.
 Clockwise is also licensed under the MPLv2.
