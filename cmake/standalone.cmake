@@ -15,6 +15,12 @@ PRIVATE
     ${cwhttpd_PRIV_INC}
 )
 
+target_link_libraries(cwhttpd
+PUBLIC
+    pthread
+    rt
+)
+
 if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../../frogfs)
     include(${CMAKE_CURRENT_LIST_DIR}/../../frogfs/cmake/files.cmake)
 

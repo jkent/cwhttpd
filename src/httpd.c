@@ -17,9 +17,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#if defined(UNIX)
-# include <bsd/string.h>
-#endif
 
 
 /*******************************
@@ -814,6 +811,28 @@ static bool parse_headers(cwhttpd_conn_t *conn)
 }
 
 static const cwhttpd_route_t route_404 = {NULL, cwhttpd_route_404, NULL, 0};
+
+static char *strnstr(const char *s1, const char *s2, size_t n)
+{   // simplistic algorithm with O(n2) worst case
+
+    size_t i, len;
+    char c = *s2;
+
+    if (c == '\0')
+        return (char *)s1;
+
+    for (len = strlen(s2); len <= n; n--, s1++) {
+        if (*s1 == c) {
+            for (i = 1;; i++) {
+                if (i == len)
+                    return (char *)s1;
+                if (s1[i] != s2[i])
+                    break;
+            }
+        }
+    }
+    return NULL;
+}
 
 void cwhttpd_new_conn_cb(cwhttpd_conn_t *conn)
 {

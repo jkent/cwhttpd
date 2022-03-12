@@ -13,9 +13,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(UNIX)
-# include <bsd/string.h>
-#endif
 
 
 #define WS_GUID "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -269,6 +266,7 @@ cwhttpd_status_t cwhttpd_route_ws(cwhttpd_conn_t *conn)
     char buf[1024];
     cwhttpd_ws_t ws = { };
     sha1nfo s;
+    size_t out_len;
 
     const char *header = cwhttpd_get_header(conn, "Upgrade");
     if (header == NULL || strstr(header, "websocket") == NULL) {
@@ -285,10 +283,20 @@ cwhttpd_status_t cwhttpd_route_ws(cwhttpd_conn_t *conn)
     ws.conn = conn;
 
     // Reply with the right headers.
-    strlcpy(buf, header, sizeof(buf));
-    strlcat(buf, WS_GUID, sizeof(buf));
+    strncpy(buf, header, sizeof(buf));
+    out_len = strlen(buf);
+    if (sizeof(buf) - out_len > 0) {
+        strncpy(buf + out_len, WS_GUID, sizeof(buf) - out_len - 1);
+        buf[sizeof(buf) - out_len - 1] = '\0';
+        out_len = strlen(buf);
+    }
+
     sha1_init(&s);
-    sha1_write(&s, buf, strlen(buf));
+    if (out_len > 20) {
+        sha1_write(&s, buf, 20);
+        buf[sizeof(buf) - 20];
+    }
+
     cwhttpd_set_chunked(conn, false);
     cwhttpd_response(conn, 101);
     cwhttpd_send_header(conn, "Upgrade", "websocket");

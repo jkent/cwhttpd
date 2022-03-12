@@ -255,7 +255,7 @@ bool cwhttpd_start(cwhttpd_inst_t *inst)
     posix_inst_t *pinst = inst_to_pinst(inst);
 
     cwhttpd_thread_attr_t thread_attr = {
-        .name = 'httpd_listener",
+        .name = "httpd_listener",
         .stack_size = CONFIG_CWHTTPD_LISTENER_STACK_SIZE,
         .priority = CONFIG_CWHTTPD_LISTENER_PRIORITY,
         .affinity = CONFIG_CWHTTPD_LISTENER_AFFINITY,

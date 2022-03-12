@@ -18,9 +18,6 @@ Route handlers to let httpd use the filesystem to serve the files in it.
 #include <sys/unistd.h>
 #include <sys/stat.h>
 #include <sys/errno.h>
-#if defined(UNIX)
-# include <bsd/string.h>
-#endif
 
 
 #define TRY(X) ({ \
@@ -52,17 +49,29 @@ static bool get_filepath(cwhttpd_conn_t *conn, char *path, size_t len,
     }
 
     if (route->argc < 1) {
-        out_len = strlcpy(path, url, len);
-        if (path[out_len - 1] == '/') {
-            out_len += strlcpy(path + out_len, index, len - out_len);
+        if (len > 0) {
+            strncpy(path, url, len - 1);
+            path[len - 1] = '\0';
+            out_len = strlen(path);
         }
-    } else {
-        out_len = strlcpy(path, route->argv[0], len);
-        if (path[out_len - 1] == '/') {
-            out_len += strlcpy(path + out_len, url, len - out_len);
-            if (path[out_len - 1] == '/') {
-                out_len += strlcpy(path + out_len, index, len - out_len);
-            }
+        if (path[out_len - 1] == '/' && len - out_len > 0) {
+            strncpy(path + out_len, index, len - out_len - 1);
+            path[len - out_len - 1] = '\0';
+            out_len = strlen(path);
+        }
+    } else if (len > 0) {
+        strncpy(path, route->argv[0], len);
+        path[len - 1] = '\0';
+        out_len = strlen(path);
+        if (path[out_len - 1] == '/' && len - out_len > 0) {
+            strncpy(path + out_len, url, len - out_len - 1);
+            path[len - out_len - 1] = '\0';
+            out_len = strlen(path);
+        }
+        if (path[out_len - 1] == '/' && len - out_len > 0) {
+            strncpy(path + out_len, index, len - out_len - 1);
+            path[len - out_len - 1] = '\0';
+            out_len = strlen(path);
         }
     }
 
@@ -71,8 +80,16 @@ static bool get_filepath(cwhttpd_conn_t *conn, char *path, size_t len,
     }
 
     if (S_ISDIR(st->st_mode)) {
-        out_len += strlcpy(path + out_len, "/", len - out_len);
-        out_len += strlcpy(path + out_len, index, len - out_len);
+        if (len - out_len - 1 > 0) {
+            strncpy(path + out_len, "/", len - out_len - 1);
+            path[len - out_len - 1] = '\0';
+            out_len = strlen(path);
+        }
+        if (len - out_len - 1 > 0) {
+            strncpy(path + out_len, index, len - out_len);
+            path[len - out_len - 1] = '\0';
+            out_len = strlen(path);
+        }
         if (stat(path, st) != 0) {
             return false;
         }
@@ -111,8 +128,8 @@ cwhttpd_status_t cwhttpd_route_fs_get(cwhttpd_conn_t *conn)
         }
     }
 
-    /* ESPFS v2 */
-    if (st.st_spare4[0] == 0x2B534645) {
+    /* ESPFS v2 or FrogFS*/
+    if (st.st_spare4[0] == 0x2B534645 || st.st_spare4[0] == 0x676f7246) {
         if (st.st_spare4[0] & 1) {
             gzip_encoding = true;
         }
@@ -122,12 +139,18 @@ cwhttpd_status_t cwhttpd_route_fs_get(cwhttpd_conn_t *conn)
     const char *mimetype = cwhttpd_get_mimetype(buf);
 
     FILE *f = fopen(buf, "r");
+#if 0 // Deprecated
     if (f == NULL) {
         /* file not found, look for filename.gz */
-        strlcat(buf, ".gz", sizeof(buf));
+        size_t out_len = strlen(buf);
+        if (sizeof(buf) - out_len > 0) {
+            strncpy(buf + out_len, ".gz", sizeof(buf) - out_len - 1);
+            buf[sizeof(buf) - out_len - 1] = "\0";
+        }
         f = fopen(buf, "r");
         gzip_encoding = true;
     }
+#endif
 
     if (f == NULL) {
         return CWHTTPD_STATUS_NOTFOUND;
@@ -359,7 +382,8 @@ cwhttpd_status_t cwhttpd_route_fs_put(cwhttpd_conn_t *conn)
             goto err;
         }
 
-        strlcpy(data->filepath, basepath, sizeof(data->filepath));
+        strncpy(data->filepath, basepath, sizeof(data->filepath) - 1);
+        buf[sizeof(data->filepath) - 1] = '\0';
         data->filepath_len = strlen(data->filepath);
         if (data->filepath[data->filepath_len - 1] == '/') {
             data->filename = data->filepath + data->filepath_len;
@@ -384,8 +408,13 @@ cwhttpd_status_t cwhttpd_route_fs_put(cwhttpd_conn_t *conn)
             const char *route_url = conn->route->path;
 
             while (*url && *route_url++ == *url++);
-            strlcpy(data->filename, url,
-                    sizeof(data->filepath) - data->filepath_len);
+
+            if (sizeof(data->filepath) - data->filepath_len > 0) {
+                strncpy(data->filename, url,
+                        sizeof(data->filepath) - data->filepath_len);
+                data->filename[sizeof(data->filepath) - \
+                        data->filepath_len - 1] = '\0';
+            }
         }
 
         LOGI(__func__, "Uploading: %s", data->filepath);

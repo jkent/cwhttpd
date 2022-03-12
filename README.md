@@ -12,7 +12,7 @@ ESP8266, ESP32 and Linux. It shows how to use Clockwise with FrogFS, serve
 files, use websocks and in the case of the Espressif devices it also shows how
 to associate WiFi and do flash updates.
 
-# Using With ESP8266_RTOS_SDK or ESP-IDF
+# Using With ESP-IDF
 
 Check out the Clockwise repository in the components directory of your
 project. This should put it at my_project/components/clockwise. If it is in
