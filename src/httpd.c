@@ -812,7 +812,8 @@ static bool parse_headers(cwhttpd_conn_t *conn)
 
 static const cwhttpd_route_t route_404 = {NULL, cwhttpd_route_404, NULL, 0};
 
-static char *strnstr(const char *s1, const char *s2, size_t n)
+// renamed to my_strnstr incase name conflict with library version
+static char *my_strnstr(const char *s1, const char *s2, size_t n)
 {   // simplistic algorithm with O(n2) worst case
 
     size_t i, len;
@@ -858,7 +859,7 @@ void cwhttpd_new_conn_cb(cwhttpd_conn_t *conn)
             return;
         }
         conn->priv.req_len = len;
-        conn->priv.data = strnstr(conn->priv.req, "\r\n\r\n",
+        conn->priv.data = my_strnstr(conn->priv.req, "\r\n\r\n",
                 conn->priv.req_len);
         if (conn->priv.data == NULL) {
             cwhttpd_response(conn, 400);
@@ -877,7 +878,7 @@ void cwhttpd_new_conn_cb(cwhttpd_conn_t *conn)
 
 #ifdef CONFIG_CWHTTPD_ENABLE_CORS
         /* CORS preflight */
-        if (conn->method == CWHTTPD_METHOD_OPTIONS) {
+        if (conn->request.method == CWHTTPD_METHOD_OPTIONS) {
             cwhttpd_set_chunked(conn, false);
             cwhttpd_response(conn, 204);
             cwhttpd_send_header(conn, "Access-Control-Allow-Origin",

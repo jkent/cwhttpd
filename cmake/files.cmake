@@ -16,10 +16,6 @@ set(cwhttpd_SRC
 
 set(cwhttpd_IDF_SRC
     ${cwhttpd_DIR}/src/port_freertos.c
-
-    #${cwhttpd_DIR}/src/esp32_flash.c
-    #${cwhttpd_DIR}/src/route_flash.c
-    #${cwhttpd_DIR}/src/route_wifi.c
 )
 
 set(cwhttpd_LINUX_SRC
@@ -32,9 +28,7 @@ set(cwhttpd_INC
 )
 
 set(cwhttpd_IDF_PRIV_REQ
-    #app_update
     freertos
     mbedtls
-    spi_flash
-    #wpa_supplicant
+    esp_netif
 )

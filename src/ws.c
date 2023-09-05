@@ -294,7 +294,7 @@ cwhttpd_status_t cwhttpd_route_ws(cwhttpd_conn_t *conn)
     sha1_init(&s);
     if (out_len > 20) {
         sha1_write(&s, buf, 20);
-        buf[sizeof(buf) - 20];
+        // buf[sizeof(buf) - 20]; -- what is this?
     }
 
     cwhttpd_set_chunked(conn, false);

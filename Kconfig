@@ -130,11 +130,4 @@ config CWHTTPD_MBEDTLS
 		Enabling this allows HTTP instances to be configured for serving
 		TLS connections.
 
-config CWHTTPD_FW_OTA_FACTORY
-	bool "Allow OTA of factory partition"
-	default n
-	help
-		Allows cwhttpd_route_fw_upload() in route_flash.c to write to the
-		factory partition.  It it not recommended for production use.
-
 endmenu

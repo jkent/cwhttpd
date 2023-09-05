@@ -10,10 +10,6 @@ extern "C" {
 
 #include "httpd.h"
 
-#if defined(ESP_PLATFORM)
-# include <esp_event.h>
-#endif
-
 
 /******************************
  * \section Filesystem Routes
@@ -248,39 +244,6 @@ cwhttpd_status_t cwhttpd_route_auth_basic(cwhttpd_conn_t *conn);
  *****************************/
 
 cwhttpd_status_t cwhttpd_route_ws(cwhttpd_conn_t *conn);
-
-
-/************************
- * \section WiFi Routes
- ************************/
-
-#if defined(ESP_PLATFORM)
-esp_err_t cwhttpd_wifi_init(void);
-void cwhttpd_wifi_event_cb(system_event_t *event);
-cwhttpd_status_t cwhttpd_tpl_wlan(cwhttpd_conn_t *conn, char *token, void **arg);
-
-cwhttpd_status_t cwhttpd_route_wifi_scan(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_wifi(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_wifi_connect(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_wifi_set_mode(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_wifi_ap_settings(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_wifi_status(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_wifi_start_wps(cwhttpd_conn_t *conn);
-#endif
-
-
-/*************************
- * \section Flash Routes
- *************************/
-
-#if defined(ESP_PLATFORM)
-cwhttpd_status_t cwhttpd_route_fw_get_next(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_fw_upload(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_fw_reboot(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_fw_set_boot(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_fw_erase_flash(cwhttpd_conn_t *conn);
-cwhttpd_status_t cwhttpd_route_fw_get_flash_info(cwhttpd_conn_t *conn);
-#endif
 
 
 #ifdef __cplusplus
