@@ -10,5 +10,3 @@ Routes
    redirect
    auth
    ws
-   wifi
-   fw
