@@ -11,7 +11,6 @@ set(cwhttpd_SRC
     ${cwhttpd_DIR}/src/route_redirect.c
     ${cwhttpd_DIR}/src/sha1.c
     ${cwhttpd_DIR}/src/ws.c
-    ${cwhttpd_DIR}/third-party/frozen/frozen.c
 )
 
 set(cwhttpd_IDF_SRC
@@ -24,7 +23,6 @@ set(cwhttpd_LINUX_SRC
 
 set(cwhttpd_INC
     ${cwhttpd_DIR}/include
-    ${cwhttpd_DIR}/third-party/frozen
 )
 
 set(cwhttpd_IDF_PRIV_REQ
