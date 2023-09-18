@@ -377,13 +377,13 @@ ssize_t cwhttpd_plat_send(cwhttpd_conn_t *conn, const void *buf, size_t len)
 {
     ssize_t ret = -1;
     posix_conn_t *pconn = conn_to_pconn(conn);
-    posix_inst_t *pinst = inst_to_pinst(conn->inst);
 
     if (len == 0) {
         return 0;
     }
 
 #if defined(CONFIG_CWHTTPD_MBEDTLS)
+    posix_inst_t *pinst = inst_to_pinst(conn->inst);
     if (pinst->flags & CWHTTPD_FLAG_TLS) {
         ret = mbedtls_ssl_write(&pconn->ssl, buf, len);
         if (ret < 0) {
@@ -417,10 +417,10 @@ ssize_t cwhttpd_plat_send(cwhttpd_conn_t *conn, const void *buf, size_t len)
 ssize_t cwhttpd_plat_recv(cwhttpd_conn_t *conn, void *buf, size_t len)
 {
     posix_conn_t *pconn = conn_to_pconn(conn);
-    posix_inst_t *pinst = inst_to_pinst(conn->inst);
     ssize_t ret = -1;
 
 #if defined(CONFIG_CWHTTPD_MBEDTLS)
+    posix_inst_t *pinst = inst_to_pinst(conn->inst);
     if (pinst->flags & CWHTTPD_FLAG_TLS) {
         ret = mbedtls_ssl_read(&pconn->ssl, buf, len);
         if (ret < 0) {
