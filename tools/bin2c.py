@@ -3,49 +3,51 @@
 from argparse import ArgumentParser
 import os
 
-def main():
-    parser = ArgumentParser()
-    parser.add_argument('src_bin', metavar='SRC', help='source binary data')
-    parser.add_argument('dst_out', metavar='DST', help='destination c source')
-    args = parser.parse_args()
 
-    with open(args.src_bin, 'rb') as f:
-        in_data = f.read()
+def save_array_c(src_path, dst_path, symbol):
+    length = os.path.getsize(src_path)
 
-    transtab = str.maketrans('-.', '__')
-    varname = os.path.basename(args.src_bin).translate(transtab)
+    with open(src_path, 'rb') as src_f:
+        with open(dst_path, 'w') as dst_f:
+            dst_f.write('#include <stddef.h>\n')
+            dst_f.write('#include <stdint.h>\n')
+            dst_f.write('\n')
+            dst_f.write(f'const size_t {symbol}_len = {length};\n')
+            dst_f.write(f'const __attribute__((aligned(4))) uint8_t {symbol}[] = {{\n')
+            while True:
+                data = src_f.read(12)
+                if not data:
+                    break
+                data = [f'0x{byte:02X}' for byte in data]
+                s = ', '.join(data)
+                dst_f.write(f'    {s},\n')
+            dst_f.write('};\n')
 
-    out_data = ''
+def save_asm_c(src_path, dst_path, symbol):
+    length = os.path.getsize(src_path)
 
-    data_len = len(in_data)
-    n = 0
-    while n < data_len:
-        out_data += '  '
-        for i in range(12):
-            out_data += '0x%02X' % in_data[n]
-            n += 1
-            if n == data_len:
-                break
-            elif i == 11:
-                out_data += ','
-            else:
-                out_data += ', '
-
-        out_data += '\n'
-        if n >= data_len:
-            break
-
-    source_code = \
-f'''#include <stddef.h>
-#include <stdint.h>
-
-const size_t {varname}_len = {data_len};
-const __attribute__((aligned(4))) uint8_t {varname}[] = {{
-{out_data}}};
-'''
-
-    with open(args.dst_out, 'w') as f:
-        f.write(source_code)
+    with open(dst_path, 'w') as dst_f:
+        dst_f.write('asm (\n')
+        dst_f.write('    ".section .rodata\\n"\n')
+        dst_f.write('    ".balign 4\\n"\n')
+        dst_f.write(f'    ".global {symbol}_len\\n"\n')
+        dst_f.write(f'    "{symbol}_len:\\n"\n')
+        dst_f.write(f'    ".int {length}\\n"\n')
+        dst_f.write(f'    ".global {symbol}\\n"\n')
+        dst_f.write(f'    "{symbol}:\\n"\n')
+        dst_f.write(f'    ".incbin \\"{src_path}\\"\\n"\n')
+        dst_f.write('    ".balign 4\\n"\n')
+        dst_f.write('    ".section .text\\n"\n')
+        dst_f.write(');\n')
 
 if __name__ == '__main__':
-    main()
+    parser = ArgumentParser()
+    parser.add_argument('--use-array', action='store_true',
+            help='use slower but portable array method')
+    parser.add_argument('binary', metavar='BINARY', help='source binary data')
+    parser.add_argument('output', metavar='OUTPUT', help='destination C source')
+    args = parser.parse_args()
+
+    symbol = os.path.basename(args.binary).translate(str.maketrans('-.', '__'))
+    fn = save_array_c if args.use_array else save_asm_c
+    fn(args.binary, args.output, symbol)
