@@ -1,9 +1,10 @@
-#ESP-IDF Kconfig configuration file.
 menu "Clockwise HTTPd"
 
 choice
 	prompt "Log level"
-	default CWHTTPD_LOG_LEVEL_WARNING
+	default CWHTTPD_LOG_LEVEL_WARN
+	help
+		This option sets the log level for Clockwise HTTPd.
 
 config CWHTTPD_LOG_LEVEL_NONE
 	bool "None"
@@ -11,7 +12,7 @@ config CWHTTPD_LOG_LEVEL_NONE
 config CWHTTPD_LOG_LEVEL_ERROR
 	bool "Error"
 
-config CWHTTPD_LOG_LEVEL_WARNING
+config CWHTTPD_LOG_LEVEL_WARN
 	bool "Warning"
 
 config CWHTTPD_LOG_LEVEL_INFO

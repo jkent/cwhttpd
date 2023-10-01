@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <stdio.h>
 #if defined(ESP_PLATFORM)
 # include <sdkconfig.h>
 #endif
@@ -24,37 +25,6 @@
 #else
 # define LOG_LEVEL LOG_WARN
 #endif
-
-#if defined(ESP_PLATFORM)
-
-# include <esp_log.h>
-
-
-# define LOG_NONE    ESP_LOG_NONE
-# define LOG_ERROR   ESP_LOG_ERROR
-# define LOG_WARN    ESP_LOG_WARN
-# define LOG_INFO    ESP_LOG_INFO
-# define LOG_DEBUG   ESP_LOG_DEBUG
-# define LOG_VERBOSE ESP_LOG_VERBOSE
-
-# if defined(CONFIG_IDF_TARGET_ESP8266)
-#  define LOGE( tag, format, ... )  if (LOG_LEVEL >= LOG_ERROR)   { esp_log_write(LOG_ERROR,   tag, format, ##__VA_ARGS__); }
-#  define LOGW( tag, format, ... )  if (LOG_LEVEL >= LOG_WARN)    { esp_log_write(LOG_WARN,    tag, format, ##__VA_ARGS__); }
-#  define LOGI( tag, format, ... )  if (LOG_LEVEL >= LOG_INFO)    { esp_log_write(LOG_INFO,    tag, format, ##__VA_ARGS__); }
-#  define LOGD( tag, format, ... )  if (LOG_LEVEL >= LOG_DEBUG)   { esp_log_write(LOG_DEBUG,   tag, format, ##__VA_ARGS__); }
-#  define LOGV( tag, format, ... )  if (LOG_LEVEL >= LOG_VERBOSE) { esp_log_write(LOG_VERBOSE, tag, format, ##__VA_ARGS__); }
-# else
-#  define LOGE( tag, format, ... )  if (LOG_LEVEL >= LOG_ERROR)   { esp_log_write(LOG_ERROR,   tag, LOG_FORMAT(E, format), esp_log_timestamp(), tag, ##__VA_ARGS__); }
-#  define LOGW( tag, format, ... )  if (LOG_LEVEL >= LOG_WARN)    { esp_log_write(LOG_WARN,    tag, LOG_FORMAT(W, format), esp_log_timestamp(), tag, ##__VA_ARGS__); }
-#  define LOGI( tag, format, ... )  if (LOG_LEVEL >= LOG_INFO)    { esp_log_write(LOG_INFO,    tag, LOG_FORMAT(I, format), esp_log_timestamp(), tag, ##__VA_ARGS__); }
-#  define LOGD( tag, format, ... )  if (LOG_LEVEL >= LOG_DEBUG)   { esp_log_write(LOG_DEBUG,   tag, LOG_FORMAT(D, format), esp_log_timestamp(), tag, ##__VA_ARGS__); }
-#  define LOGV( tag, format, ... )  if (LOG_LEVEL >= LOG_VERBOSE) { esp_log_write(LOG_VERBOSE, tag, LOG_FORMAT(V, format), esp_log_timestamp(), tag, ##__VA_ARGS__); }
-# endif
-
-#else
-
-# include <stdio.h>
-
 
 typedef enum {
     LOG_NONE,
@@ -84,5 +54,3 @@ typedef enum {
 # define LOGI( tag, format, ... )  if (LOG_LEVEL >= LOG_INFO)    { fprintf(stderr, LOG_FORMAT(I, format), tag, ##__VA_ARGS__); }
 # define LOGD( tag, format, ... )  if (LOG_LEVEL >= LOG_DEBUG)   { fprintf(stderr, LOG_FORMAT(D, format), tag, ##__VA_ARGS__); }
 # define LOGV( tag, format, ... )  if (LOG_LEVEL >= LOG_VERBOSE) { fprintf(stderr, LOG_FORMAT(V, format), tag, ##__VA_ARGS__); }
-
-#endif
