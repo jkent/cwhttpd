@@ -19,6 +19,12 @@
 #include <sys/types.h>
 
 
+#define MIN(a, b) ({ \
+    __typeof__(a) _a = a; \
+    __typeof__(b) _b = b; \
+    _a < _b ? _a : _b; \
+})
+
 /*******************************
  * \section Instance Functions
  *******************************/
@@ -911,11 +917,36 @@ void cwhttpd_new_conn_cb(cwhttpd_conn_t *conn)
                 conn->route = &route_404;
             }
 
+more:
+            if (conn->post && conn->post->received < conn->post->len) {
+                ssize_t chunk;
+                if (conn->priv.req_len - (conn->priv.data -
+                        conn->priv.req) > 0) {
+                    chunk = MIN(conn->priv.req_len -
+                            (conn->priv.data - conn->priv.req),
+                            sizeof(conn->post->buf) - conn->post->buf_len);
+                    memcpy(conn->post->buf + conn->post->buf_len,
+                            conn->priv.data, chunk);
+                    conn->priv.data += chunk;
+                } else {
+                    chunk = cwhttpd_plat_recv(conn, conn->post->buf +
+                            conn->post->buf_len, MIN(conn->post->len,
+                            sizeof(conn->post->buf) - conn->post->buf_len));
+                    if (chunk < 0) {
+                        return;
+                    }
+                }
+                conn->post->buf_len += chunk;
+                conn->post->received += chunk;
+            }
+
             cwhttpd_status_t status = conn->route->handler(conn);
             if ((status == CWHTTPD_STATUS_NOTFOUND) ||
                     (status == CWHTTPD_STATUS_AUTHENTICATED)) {
                 route = route->next;
-            }  else if (status == CWHTTPD_STATUS_DONE) {
+            } else if (status == CWHTTPD_STATUS_MORE) {
+                goto more;
+            } else if (status == CWHTTPD_STATUS_DONE) {
                 break;
             } else if (status == CWHTTPD_STATUS_CLOSE) {
                 conn->priv.flags |= HFL_CLOSE;

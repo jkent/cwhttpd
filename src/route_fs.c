@@ -48,32 +48,21 @@ static bool get_filepath(cwhttpd_conn_t *conn, char *path, size_t len,
         rpath++;
         url++;
     }
+    while (*url == '/') {
+        url++;
+    }
 
+    out_len = 0;
     if (route->argc < 1) {
-        if (len > 0) {
-            strncpy(path, url, len - 1);
-            path[len - 1] = '\0';
-            out_len = strlen(path);
+        out_len += strlcpy(path + out_len, url, len - out_len);
+    } else {
+        out_len += strlcpy(path + out_len, route->argv[0], len - out_len);
+        if (path[out_len - 1] == '/') {
+            out_len += strlcpy(path + out_len, url, len - out_len);
         }
-        if (path[out_len - 1] == '/' && len - out_len > 0) {
-            strncpy(path + out_len, index, len - out_len - 1);
-            path[len - out_len - 1] = '\0';
-            out_len = strlen(path);
-        }
-    } else if (len > 0) {
-        strncpy(path, route->argv[0], len);
-        path[len - 1] = '\0';
-        out_len = strlen(path);
-        if (path[out_len - 1] == '/' && len - out_len > 0) {
-            strncpy(path + out_len, url, len - out_len - 1);
-            path[len - out_len - 1] = '\0';
-            out_len = strlen(path);
-        }
-        if (path[out_len - 1] == '/' && len - out_len > 0) {
-            strncpy(path + out_len, index, len - out_len - 1);
-            path[len - out_len - 1] = '\0';
-            out_len = strlen(path);
-        }
+    }
+    if (path[out_len - 1] == '/') {
+        out_len += strlcpy(path + out_len, index, len - out_len);
     }
 
     if (stat(path, st) != 0) {
@@ -81,16 +70,8 @@ static bool get_filepath(cwhttpd_conn_t *conn, char *path, size_t len,
     }
 
     if (S_ISDIR(st->st_mode)) {
-        if (len - out_len - 1 > 0) {
-            strncpy(path + out_len, "/", len - out_len - 1);
-            path[len - out_len - 1] = '\0';
-            out_len = strlen(path);
-        }
-        if (len - out_len - 1 > 0) {
-            strncpy(path + out_len, index, len - out_len);
-            path[len - out_len - 1] = '\0';
-            out_len = strlen(path);
-        }
+        out_len += strlcpy(path + out_len, "/", len - out_len);
+        out_len += strlcpy(path + out_len, index, len - out_len);
         if (stat(path, st) != 0) {
             return false;
         }
