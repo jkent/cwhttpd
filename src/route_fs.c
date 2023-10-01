@@ -11,7 +11,6 @@ Route handlers to let httpd use the filesystem to serve the files in it.
 #include "cwhttpd/httpd.h"
 
 #include <assert.h>
-#include <frozen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
